@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>CitySim</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/top-bar.css">
+  <link rel="stylesheet" href="css/location.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/player-status.css">
+  <link rel="stylesheet" href="css/smartphone.css">
+  <link rel="stylesheet" href="css/modals.css">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="time-weather">
+      <span id="game-time">Загрузка...</span> • 
+      <span id="weather">Загрузка...</span>
+    </div>
+    <div class="player-status-mini">
+      Энергия: <span id="player-energy">--</span> | Стресс: <span id="player-stress">--</span>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <div class="left-panel">
+      <section class="location-section">
+        <h2 id="location-title">Загрузка...</h2>
+        <p id="location-description">Описание локации загружается...</p>
+        <h3>Объекты в локации</h3>
+        <ul id="location-objects" class="compact-list"></ul>
+        <h3>Предметы на полу</h3>
+        <ul id="location-items" class="compact-list"></ul>
+        <h3>Выходы</h3>
+        <ul id="location-exits" class="compact-list"></ul>
+      </section>
+      <section class="chat-section">
+        <div id="chat-log">Добро пожаловать в CitySim!</div>
+        <div class="chat-input">
+          <input type="text" id="player-input" placeholder="Напишите сообщение..." />
+          <button id="send-btn">➤</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="right-panel">
+      <section class="player-card">
+        <h3>Игрок: <span id="player-name">Загрузка...</span></h3>
+        <div class="appearance-placeholder">Загрузка внешности...</div>
+        <div class="stats">
+          <p>Здоровье: <span id="player-health">--</span></p>
+          <p>Энергия: <span id="player-energy2">--</span></p>
+          <p>Стресс: <span id="player-stress2">--</span></p>
+          <p>Социальный: <span id="player-social">--</span></p>
+        </div>
+      </section>
+
+      <section class="smartphone">
+        <h3>📱 Смартфон</h3>
+        <div class="apps">
+		  <button class="app-btn" onclick="openApp('inventory')">🎒 Инвентарь</button>
+          <button class="app-btn" onclick="openApp('editor')">🛠️ Редактор мира</button>
+          <button class="app-btn" onclick="openApp('search')">🔍 Поиск</button>
+          <button class="app-btn" onclick="openApp('world')">🌍 Мир</button>
+          <button class="app-btn" disabled>💬 Telegram</button>
+        </div>
+      </section>
+
+      <section class="npcs-in-location">
+        <h3>NPC в локации</h3>
+        <ul id="npc-list-right" class="compact-list"><li>Загрузка...</li></ul>
+      </section>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНЫЕ ОКНА -->
+  <div id="modal-editor" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeApp('editor')">&times;</span>
+      <h3>🛠️ Редактор мира</h3>
+      <button class="tool-btn" onclick="openCreateModal('character')">➕ Персонаж</button>
+      <button class="tool-btn" onclick="openCreateModal('location')">➕ Локация</button>
+      <button class="tool-btn" onclick="openCreateModal('item')">➕ Предмет</button>
+    </div>
+  </div>
+
+  <div id="modal-search" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeApp('search')">&times;</span>
+      <h3>🔍 Поиск</h3>
+      <input type="text" id="search-query" placeholder="ID или имя">
+      <button onclick="performSearch()">Найти</button>
+      <div id="search-results"></div>
+    </div>
+  </div>
+
+  <div id="modal-world" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeApp('world')">&times;</span>
+      <h3>🌍 Глобальное состояние мира</h3>
+      <form id="world-form">
+        <label>Дата и время: <input type="text" id="w_timestamp" placeholder="2025-10-26T08:00:00"></label>
+        <label>Погода:
+          <select id="w_weather">
+            <option value="ясно">Ясно</option>
+            <option value="пасмурно">Пасмурно</option>
+            <option value="дождь">Дождь</option>
+            <option value="снег">Снег</option>
+          </select>
+        </label>
+        <label>Температура: <input type="number" id="w_temperature" step="0.5" value="12"></label>
+        <label>Сезон:
+          <select id="w_season">
+            <option value="весна">Весна</option>
+            <option value="лето">Лето</option>
+            <option value="осень">Осень</option>
+            <option value="зима">Зима</option>
+          </select>
+        </label>
+        <label>День недели:
+          <select id="w_day">
+            <option value="понедельник">Понедельник</option>
+            <option value="вторник">Вторник</option>
+            <option value="среда">Среда</option>
+            <option value="четверг">Четверг</option>
+            <option value="пятница">Пятница</option>
+            <option value="суббота">Суббота</option>
+            <option value="воскресенье">Воскресенье</option>
+          </select>
+        </label>
+        <button type="button" onclick="saveWorldState()">Сохранить мир</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Создание -->
+<div id="modal-create" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal('create')">&times;</span>
+    <h3 id="create-title">Создать сущность</h3>
+    <select id="create-type" onchange="buildCreateForm(this.value)">
+      <option value="character">Персонаж</option>
+      <option value="location">Локация</option>
+      <option value="item">Предмет</option>
+    </select>
+    <form id="create-form-container"></form> <!-- ← ИЗМЕНЕНО: уникальный ID -->
+    <button onclick="submitCreateForm()">Создать</button>
+  </div>
+</div>
+
+<!-- Редактирование -->
+<div id="modal-edit" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal('edit')">&times;</span>
+    <h3>Редактировать <span id="edit-id-display"></span></h3>
+    <form id="edit-form-container"></form> <!-- ← ИЗМЕНЕНО: уникальный ID -->
+    <div class="edit-actions">
+      <button onclick="submitEditForm()">Сохранить</button>
+      <button class="btn-danger" onclick="deleteEntity()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Инвентарь -->
+<div id="modal-inventory" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeApp('inventory')">&times;</span>
+    <h3>🎒 Инвентарь игрока</h3>
+    <div id="inventory-list"></div>
+  </div>
+</div>
+
+  <!-- JS -->
+  <script src="js/core.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/location.js"></script>
+  <script src="js/npcs.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/smartphone.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/inventory.js"></script>
+
+  <script>
+    window.addEventListener('load', () => {
+      console.log('CitySim загружен. Инициализация...');
+      if (typeof renderWorldState === 'function') renderWorldState();
+      if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+      if (typeof renderNpcsRight === 'function') renderNpcsRight();
+      if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
+    });
+  </script>
+</body>
+</html>

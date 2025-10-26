@@ -1,0 +1,36 @@
+/* player-status.css — статус игрока и инвентарь */
+
+.player-card h3 {
+  margin-bottom: 12px;
+  color: #2c3e50;
+}
+
+.appearance-placeholder {
+  background: #f8f9fa;
+  padding: 8px;
+  border-radius: 6px;
+  font-style: italic;
+  margin: 10px 0;
+  border: 1px dashed #ccc;
+}
+
+.stats p {
+  margin: 6px 0;
+  font-weight: bold;
+}
+
+.stats span {
+  font-weight: normal;
+  color: #555;
+}
+
+#player-inventory li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inventory-item-icon {
+  font-size: 1.2em;
+  margin-left: 6px;
+}

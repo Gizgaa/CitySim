@@ -1,0 +1,140 @@
+{
+  "id": "elian",
+  "name": "Алексей",
+  "surname": "Сергеевич",
+  "patronymic": "Семёнов",
+  "age": 31,
+  "gender": "male",
+  "role": "player",
+  "location": "school_45",
+  "school": {
+    "id": "",
+    "name": "",
+    "classGrade": "",
+    "grade": 0,
+    "letter": ""
+  },
+  "job": {
+    "position": "Директор",
+    "workplace": "Школа №45"
+  },
+  "appearance": {
+    "hair": {
+      "color": "неизвестно",
+      "length": "неизвестно",
+      "texture": "неизвестно"
+    },
+    "eyes": "голубые",
+    "skin": "светлая",
+    "height": 182,
+    "weight": 62,
+    "overall_impression": "обычная"
+  },
+  "clothing": {
+    "school_uniform": {
+      "top": "Чёрный пиджак, белая рубашка",
+      "bottom": "Чёрные брюки, чёрные туфли",
+      "accessories": [
+        "школьный значок"
+      ]
+    },
+    "casual": "джинсы и футболка"
+  },
+  "body": {
+    "chest": {
+      "size": "неизвестно",
+      "shape": "неизвестно",
+      "density": "средняя",
+      "areolas": "розовые",
+      "nipples": "нормальные"
+    },
+    "vagina": {
+      "color": "неизвестно",
+      "patterns": "нет",
+      "wetness": "неизвестно",
+      "diameter_at_rest": 0.0,
+      "max_diameter": 0.0,
+      "vagina_depth": 0.0,
+      "tightness": "средняя"
+    },
+    "anus": {
+      "color": "неизвестно",
+      "contour": "чёткий",
+      "slippery": false,
+      "diameter": 0.0,
+      "max_diameter": 2.5,
+      "tightness": "плотный"
+    },
+    "penis": {
+      "length_flaccid_cm": 8.0,
+      "length_erect_cm": 15.0,
+      "diameter_erect_cm": 4.5,
+      "circumcised": true,
+      "color": "как у тела"
+    },
+    "testicles": {
+      "size_cm": 4.0,
+      "descended": true,
+      "sperm_volume_ml": 12.0
+    }
+  },
+  "stats": {
+    "health": 100,
+    "strength": 50,
+    "agility": 60,
+    "mental": 75
+  },
+  "personality": "добрый, немного наивный, любит рассказывать истории",
+  "relationships": {
+    "player": {
+      "trust": 0.5,
+      "affection": 0.3,
+      "sex_history": [],
+      "last_interaction": "2024-10-01"
+    }
+  },
+  "status": {
+    "current_mood": "happy",
+    "health_status": "healthy",
+    "stress_level": 30
+  },
+  "virginity": {
+    "mouth": true,
+    "vagina": true,
+    "anus": true
+  },
+  "body_status": {
+    "vagina": {
+      "stretch_level": 0.0,
+      "color": "неизвестно",
+      "wetness": "сухая",
+      "sperm_inside": "нет",
+      "ml_inside": 0.0
+    },
+    "anus": {
+      "stretch_level": 0.0,
+      "color": "неизвестно",
+      "tightness": "плотный",
+      "sperm_inside": "нет",
+      "ml_inside": 0.0
+    }
+  },
+  "sperm_on_body": {
+    "on_skin_ml": 0.0,
+    "in_mouth_ml": 0.0,
+    "on_clothes_ml": 0.0
+  },
+  "arousal": {
+    "arousal_level": 0,
+    "orgasm_level": 0
+  },
+  "status_effects": null,
+  "family": {
+    "father": "",
+    "mother": "",
+    "brother": "",
+    "sister": "",
+    "spouse": "",
+    "children": []
+  }
+}

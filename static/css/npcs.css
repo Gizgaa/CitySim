@@ -1,0 +1,23 @@
+/* npcs.css — стили для списка NPC */
+
+#npc-list-right {
+  list-style: none;
+  padding: 0;
+}
+
+#npc-list-right li {
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  color: #2c3e50;
+  transition: color 0.2s;
+}
+
+#npc-list-right li:hover {
+  color: var(--color-primary);
+  background: #f9f9f9;
+}
+
+#npc-list-right li:last-child {
+  border: none;
+}

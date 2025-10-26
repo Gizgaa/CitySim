@@ -1,0 +1,78 @@
+/* base.css — фундамент стилей */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --color-bg: #f5f7fa;
+  --color-panel: #ffffff;
+  --color-sidebar: #fafafa;
+  --color-header: #2c3e50;
+  --color-primary: #3498db;
+  --color-danger: #e74c3c;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --border: 1px solid #e0e0e0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: var(--color-bg);
+  color: #333;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Основной макет */
+.main-layout {
+  display: flex;
+  height: calc(100vh - 50px);
+}
+
+.left-panel {
+  flex: 1;
+  padding: 15px;
+  overflow-y: auto;
+  background: var(--color-panel);
+  border-right: var(--border);
+}
+
+.right-panel {
+  width: 320px;
+  padding: 15px;
+  overflow-y: auto;
+  background: var(--color-sidebar);
+  border-left: var(--border);
+}
+
+/* Общие компоненты */
+section {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+h2, h3, h4 {
+  margin-bottom: 10px;
+  color: #2c3e50;
+}
+
+.compact-list {
+  list-style: none;
+  padding: 0;
+}
+
+.compact-list li {
+  padding: 4px 0;
+  color: #555;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.compact-list li:last-child {
+  border: none;
+}

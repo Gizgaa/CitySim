@@ -1,0 +1,21 @@
+/* top-bar.css — верхняя панель: время, погода, мини-статус */
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 20px;
+  background: var(--color-header);
+  color: white;
+  font-weight: bold;
+  height: 50px;
+}
+
+.time-weather {
+  font-size: 1.1em;
+}
+
+.player-status-mini {
+  font-size: 0.95em;
+  opacity: 0.9;
+}
