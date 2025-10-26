@@ -183,13 +183,18 @@
   <script src="js/inventory.js"></script>
 
   <script>
-    window.addEventListener('load', () => {
-      console.log('CitySim загружен. Инициализация...');
-      if (typeof renderWorldState === 'function') renderWorldState();
-      if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
-      if (typeof renderNpcsRight === 'function') renderNpcsRight();
-      if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
-    });
-  </script>
+  window.addEventListener('load', async () => {
+    console.log('CitySim загружен. Ожидание данных игрока...');
+    // Ждём, пока загрузится позиция игрока
+    while (!window.CitySimReady) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.log('Инициализация интерфейса...');
+    if (typeof renderWorldState === 'function') renderWorldState();
+    if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+    if (typeof renderNpcsRight === 'function') renderNpcsRight();
+    if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
+  });
+</script>
 </body>
 </html>

@@ -1,7 +1,31 @@
-// core.js
-window.currentLocationId = 'loc_vestibule'; // ← ИСПРАВЛЕНО: старт в вестибюле
+// core.js — исправленная инициализация с ожиданием позиции игрока
+
+// Глобальные переменные (инициализируются позже)
+window.currentLocationId = null;
 window.currentNpcId = null;
 
+// Флаг: готова ли система к работе
+window.CitySimReady = false;
+
+// Загрузка последней позиции игрока
+async function loadPlayerLocation() {
+  try {
+    const res = await fetch('/player');
+    if (res.ok) {
+      const player = await res.json();
+      window.currentLocationId = player.location_id;
+    } else {
+      console.warn('Игрок не найден, старт в вестибюле');
+      window.currentLocationId = 'loc_vestibule';
+    }
+  } catch (e) {
+    console.warn('Ошибка загрузки игрока:', e);
+    window.currentLocationId = 'loc_vestibule';
+  }
+  window.CitySimReady = true;
+}
+
+// Безопасный fetch
 async function safeFetch(url, errorMsg = 'Ошибка запроса') {
   try {
     const res = await fetch(url);
@@ -16,6 +40,7 @@ async function safeFetch(url, errorMsg = 'Ошибка запроса') {
   }
 }
 
+// Безопасный POST
 async function safePost(url, data, successMsg = 'Успешно') {
   try {
     const res = await fetch(url, {
@@ -36,3 +61,6 @@ async function safePost(url, data, successMsg = 'Успешно') {
     return null;
   }
 }
+
+// Запуск инициализации
+loadPlayerLocation();

@@ -1,4 +1,4 @@
-// location.js
+// location.js — управление локацией и переходами
 
 window.fetchLocation = fetchLocation;
 window.fetchLocationNeighbors = fetchLocationNeighbors;
@@ -45,11 +45,22 @@ async function renderExits() {
     </li>`;
   }).join('');
   exitList.querySelectorAll('li').forEach(li => {
-    li.addEventListener('click', () => {
+    li.addEventListener('click', async () => {
       const newLocId = li.getAttribute('data-loc-id');
-      if (newLocId) {
-        window.currentLocationId = newLocId; // ← ГЛОБАЛЬНОЕ ОБНОВЛЕНИЕ
-        loadLocationAndExits();
+      if (!newLocId) return;
+
+      try {
+        // Обновляем позицию игрока через POST с URL-параметром
+        const res = await fetch(`/player/location/${newLocId}`, { method: 'POST' });
+        if (res.ok) {
+          window.currentLocationId = newLocId;
+          await loadLocationAndExits();
+        } else {
+          alert('Не удалось обновить позицию игрока');
+        }
+      } catch (e) {
+        console.error('Ошибка при переходе:', e);
+        alert('Ошибка сети');
       }
     });
   });

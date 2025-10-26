@@ -14,7 +14,7 @@ init_db()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CitySim AI Server", version="0.7.0")
+app = FastAPI(title="CitySim AI Server", version="0.8.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,6 +25,8 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# === МОДЕЛИ ===
 
 class CharacterCreate(BaseModel):
     name: str
@@ -115,6 +117,14 @@ class ChatRequest(BaseModel):
     npc_id: str
     player_message: str
 
+class LocationUpdate(BaseModel):
+    location_id: str
+
+class WearRequest(BaseModel):
+    wear: bool
+
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+
 def generate_id(prefix: str, base: str) -> str:
     suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
     return f"{prefix}_{base[:20].lower().replace(' ', '_')}_{suffix}"
@@ -139,6 +149,8 @@ def get_location_by_id(loc_id: str) -> LocationResponse:
         raise HTTPException(status_code=404, detail="Location not found")
     return LocationResponse(**dict(row))
 
+# === ЭНДПОИНТЫ ===
+
 @app.post("/character", response_model=CharacterResponse)
 def create_character( CharacterCreate):
     conn = get_db_connection()
@@ -161,47 +173,6 @@ def create_character( CharacterCreate):
     except Exception as e:
         conn.close()
         logger.error(f"Create character error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-        
-# PATCH /character/{char_id}
-@app.patch("/character/{char_id}", response_model=CharacterResponse)
-def update_character(char_id: str, data: CharacterCreate):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-        UPDATE characters SET
-            name = ?, surname = ?, patronymic = ?, age = ?, gender = ?,
-            role = ?, location_id = ?, occupation = ?, personality = ?, current_goal = ?
-        WHERE id = ?
-        """, (
-            data.name, data.surname, data.patronymic, data.age,
-            data.gender, data.role, data.location_id, data.occupation,
-            data.personality, data.current_goal, char_id
-        ))
-        conn.commit()
-        conn.close()
-        return get_character_by_id(char_id)
-    except Exception as e:
-        conn.close()
-        logger.error(f"Update character error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# DELETE /character/{char_id}
-@app.delete("/character/{char_id}")
-def delete_character(char_id: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM characters WHERE id = ?", (char_id,))
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Character not found")
-        conn.commit()
-        conn.close()
-        return {"status": "deleted"}
-    except Exception as e:
-        conn.close()
-        logger.error(f"Delete character error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/character/{char_id}", response_model=CharacterResponse)
@@ -230,6 +201,22 @@ def get_player():
     if not row:
         raise HTTPException(status_code=404, detail="Player not found")
     return CharacterResponse(**dict(row))
+
+@app.post("/player/location/{new_location_id}")
+def update_player_location(new_location_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        player = get_player()
+        cursor.execute("UPDATE characters SET location_id = ? WHERE id = ?", 
+                      (new_location_id, player.id))
+        conn.commit()
+        conn.close()
+        return {"status": "location updated"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update player location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/player/inventory", response_model=List[ItemResponse])
 def get_player_inventory():
@@ -269,45 +256,6 @@ def create_location( LocationCreate):
         conn.close()
         logger.error(f"Create location error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-        
-@app.patch("/location/{loc_id}", response_model=LocationResponse)
-def update_location(loc_id: str, data: LocationCreate):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-        UPDATE locations SET
-            name = ?, type = ?, parent_id = ?, address = ?, owner_id = ?,
-            description = ?, open_time = ?, close_time = ?, is_always_open = ?, lock_type = ?
-        WHERE id = ?
-        """, (
-            data.name, data.type, data.parent_id, data.address, data.owner_id,
-            data.description, data.open_time, data.close_time,
-            data.is_always_open, data.lock_type, loc_id
-        ))
-        conn.commit()
-        conn.close()
-        return get_location_by_id(loc_id)
-    except Exception as e:
-        conn.close()
-        logger.error(f"Update location error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/location/{loc_id}")
-def delete_location(loc_id: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM locations WHERE id = ?", (loc_id,))
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Location not found")
-        conn.commit()
-        conn.close()
-        return {"status": "deleted"}
-    except Exception as e:
-        conn.close()
-        logger.error(f"Delete location error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/location/{loc_id}", response_model=LocationResponse)
 def get_location(loc_id: str):
@@ -327,11 +275,20 @@ def get_location_neighbors(loc_id: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
+        -- Прямые выходы
         SELECT l.id, l.name, lc.connection_type, lc.description
         FROM location_connections lc
         JOIN locations l ON lc.to_location_id = l.id
         WHERE lc.from_location_id = ?
-    """, (loc_id,))
+        
+        UNION
+        
+        -- Обратные выходы (если связь двусторонняя)
+        SELECT l.id, l.name, lc.connection_type, lc.description
+        FROM location_connections lc
+        JOIN locations l ON lc.from_location_id = l.id
+        WHERE lc.to_location_id = ? AND lc.is_bidirectional = 1
+    """, (loc_id, loc_id))
     rows = cursor.fetchall()
     conn.close()
     return [
@@ -415,9 +372,8 @@ def chat(req: ChatRequest):
     except Exception as e:
         logger.error(f"Chat error: {e}")
         return {"dialogue": "Что-то не так...", "action": "silent"}
-        
-class WearRequest(BaseModel):
-    wear: bool
+
+# === ИНВЕНТАРЬ ===
 
 @app.post("/item/{item_id}/wear")
 def wear_item(item_id: str,  WearRequest):
@@ -426,11 +382,9 @@ def wear_item(item_id: str,  WearRequest):
     try:
         player = get_player()
         if data.wear:
-            # Надеть: установить worn_by_id = player.id
             cursor.execute("UPDATE items SET worn_by_id = ? WHERE id = ? AND current_holder_id = ?", 
                           (player.id, item_id, player.id))
         else:
-            # Снять: сбросить worn_by_id
             cursor.execute("UPDATE items SET worn_by_id = NULL WHERE id = ? AND worn_by_id = ?", 
                           (item_id, player.id))
         conn.commit()
@@ -458,6 +412,86 @@ def delete_item(item_id: str):
         logger.error(f"Delete item error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# === РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ ===
+
+@app.patch("/character/{char_id}", response_model=CharacterResponse)
+def update_character(char_id: str,  CharacterCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE characters SET
+            name = ?, surname = ?, patronymic = ?, age = ?, gender = ?,
+            role = ?, location_id = ?, occupation = ?, personality = ?, current_goal = ?
+        WHERE id = ?
+        """, (
+            data.name, data.surname, data.patronymic, data.age,
+            data.gender, data.role, data.location_id, data.occupation,
+            data.personality, data.current_goal, char_id
+        ))
+        conn.commit()
+        conn.close()
+        return get_character_by_id(char_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update character error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/character/{char_id}")
+def delete_character(char_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM characters WHERE id = ?", (char_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Character not found")
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete character error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/location/{loc_id}", response_model=LocationResponse)
+def update_location(loc_id: str,  LocationCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE locations SET
+            name = ?, type = ?, parent_id = ?, address = ?, owner_id = ?,
+            description = ?, open_time = ?, close_time = ?, is_always_open = ?, lock_type = ?
+        WHERE id = ?
+        """, (
+            data.name, data.type, data.parent_id, data.address, data.owner_id,
+            data.description, data.open_time, data.close_time,
+            data.is_always_open, data.lock_type, loc_id
+        ))
+        conn.commit()
+        conn.close()
+        return get_location_by_id(loc_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/location/{loc_id}")
+def delete_location(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM locations WHERE id = ?", (loc_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Location not found")
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/")
 def root():
-    return {"message": "CitySim AI Server v0.7.0 — ready!"}
+    return {"message": "CitySim AI Server v0.8.0 — ready!"}
