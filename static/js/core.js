@@ -64,3 +64,12 @@ async function safePost(url, data, successMsg = 'Успешно') {
 
 // Запуск инициализации
 loadPlayerLocation();
+
+window.devMode = false;
+
+function toggleDevMode() {
+  window.devMode = !window.devMode;
+  document.body.classList.toggle('dev-mode', window.devMode);
+  const btn = document.getElementById('dev-toggle');
+  btn.textContent = window.devMode ? '🛠️ Dev Mode (ON)' : '🛠️ Dev Mode';
+}

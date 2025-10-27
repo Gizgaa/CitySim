@@ -16,15 +16,50 @@ async function fetchLocationNeighbors(locId) {
 
 async function renderLocation() {
   const loc = await fetchLocation(window.currentLocationId);
-  if (!loc) {
-    document.getElementById('location-title').textContent = 'Ошибка загрузки';
-    document.getElementById('location-description').textContent = 'Не удалось получить данные локации.';
+  const titleEl = document.getElementById('location-title');
+  const descEl = document.getElementById('location-description');
+
+  if (!titleEl || !descEl) {
+    console.warn('Элементы локации не найдены в DOM');
     return;
   }
-  document.getElementById('location-title').textContent = loc.name;
-  document.getElementById('location-description').textContent = loc.description || 'Описание отсутствует.';
-  document.getElementById('location-objects').innerHTML = '<li>Объекты скоро...</li>';
-  document.getElementById('location-items').innerHTML = '<li>Предметы скоро...</li>';
+
+  if (!loc) {
+    titleEl.textContent = 'Ошибка загрузки';
+    descEl.textContent = 'Не удалось получить данные локации.';
+    return;
+  }
+
+  titleEl.textContent = loc.name;
+  descEl.textContent = loc.description || 'Описание отсутствует.';
+
+  // Загружаем объекты
+  const objects = await safeFetch(`/location/${window.currentLocationId}/objects`, 'Объекты') || [];
+  const objList = document.getElementById('location-objects');
+  if (objList) {
+    if (objects.length === 0) {
+      objList.innerHTML = '<li>Нет объектов</li>';
+    } else {
+      objList.innerHTML = objects.map(obj => {
+        const desc = obj.description ? ` — ${obj.description}` : '';
+        return `<li>${obj.name} (${obj.object_type})${desc}</li>`;
+      }).join('');
+    }
+  }
+
+  // Загружаем предметы на полу
+  const items = await safeFetch(`/location/${window.currentLocationId}/items`, 'Предметы') || [];
+  const itemList = document.getElementById('location-items');
+  if (itemList) {
+    if (items.length === 0) {
+      itemList.innerHTML = '<li>Нет предметов</li>';
+    } else {
+      itemList.innerHTML = items.map(item => {
+        const desc = item.description ? ` — ${item.description}` : '';
+        return `<li>${item.name} (${item.item_type})${desc}</li>`;
+      }).join('');
+    }
+  }
 }
 
 async function renderExits() {
@@ -69,4 +104,46 @@ async function renderExits() {
 async function loadLocationAndExits() {
   await renderLocation();
   await renderExits();
+}
+
+async function editLocationField(field) {
+  const loc = await fetchLocation(window.currentLocationId);
+  if (!loc) return;
+
+  const newValue = prompt(`Изменить ${field === 'name' ? 'название' : 'описание'}:`, loc[field] || '');
+  if (newValue === null) return;
+
+  const updateData = { ...loc };
+  updateData[field] = newValue;
+
+  const res = await fetch(`/location/${window.currentLocationId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updateData)
+  });
+
+  if (res.ok) {
+    alert('Обновлено!');
+    renderLocation();
+  } else {
+    alert('Ошибка обновления');
+  }
+}
+
+function openConnectionsEditor() {
+  alert('Редактор переходов — в разработке');
+  // TODO: открыть модальное окно с выбором локаций
+}
+
+function openItemCreator() {
+  openCreateModal('item');
+}
+
+function openObjectCreator() {
+  openCreateModal('object');
+}
+
+function moveNpcHere() {
+  alert('Переместить NPC — в разработке');
+  // TODO: выбрать NPC из списка и обновить его location_id
 }

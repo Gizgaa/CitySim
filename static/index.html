@@ -27,6 +27,17 @@
       <section class="location-section">
         <h2 id="location-title">Загрузка...</h2>
         <p id="location-description">Описание локации загружается...</p>
+		
+		<!-- Кнопки Dev Mode -->
+		<div id="dev-controls" class="dev-controls" style="display:none; margin-top:15px;">
+			<button onclick="editLocationField('name')">✎ Название</button>
+			<button onclick="editLocationField('description')">✎ Описание</button>
+			<button onclick="openConnectionsEditor()">🔗 Переходы</button>
+			<button onclick="openItemCreator()">➕ Предмет</button>
+			<button onclick="openObjectCreator()">➕ Объект</button>
+			<button onclick="moveNpcHere()">👤 Переместить NPC</button>
+		</div>
+		
         <h3>Объекты в локации</h3>
         <ul id="location-objects" class="compact-list"></ul>
         <h3>Предметы на полу</h3>
@@ -63,6 +74,7 @@
           <button class="app-btn" onclick="openApp('search')">🔍 Поиск</button>
           <button class="app-btn" onclick="openApp('world')">🌍 Мир</button>
           <button class="app-btn" disabled>💬 Telegram</button>
+		  <button id="dev-toggle" class="tool-btn" onclick="toggleDevMode()">🛠️ Dev Mode</button>
         </div>
       </section>
 

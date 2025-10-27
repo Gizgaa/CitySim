@@ -1,4 +1,4 @@
-# ai_server.py
+# CitySim.py
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,13 +8,14 @@ import logging
 import requests
 import random
 import string
+import time
 from database import init_db, get_db_connection
 
 init_db()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CitySim AI Server", version="0.8.0")
+app = FastAPI(title="CitySim AI Server", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +88,13 @@ class LocationResponse(BaseModel):
     temperature: float
     cleanliness: float
 
+class ItemCreate(BaseModel):
+    name: str
+    item_type: str
+    description: Optional[str] = None
+    layer: Optional[int] = 0
+    is_dirty: Optional[bool] = False
+
 class ItemResponse(BaseModel):
     id: str
     item_type: str
@@ -98,6 +106,21 @@ class ItemResponse(BaseModel):
     worn_by_id: Optional[str]
     layer: int
     is_dirty: bool
+
+class ObjectCreate(BaseModel):
+    name: str
+    object_type: str
+    description: Optional[str] = None
+    is_interactable: Optional[bool] = True
+    is_container: Optional[bool] = False
+
+class ObjectResponse(BaseModel):
+    id: str
+    name: str
+    object_type: str
+    description: Optional[str]
+    is_interactable: bool
+    is_container: bool
 
 class WorldStateResponse(BaseModel):
     current_timestamp: str
@@ -117,17 +140,16 @@ class ChatRequest(BaseModel):
     npc_id: str
     player_message: str
 
-class LocationUpdate(BaseModel):
-    location_id: str
-
 class WearRequest(BaseModel):
     wear: bool
 
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
-def generate_id(prefix: str, base: str) -> str:
-    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    return f"{prefix}_{base[:20].lower().replace(' ', '_')}_{suffix}"
+def generate_id(prefix: str) -> str:
+    """Генерирует уникальный ID вида: prefix_1761480000000_a3b9c2d1"""
+    timestamp = int(time.time() * 1000)
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    return f"{prefix}_{timestamp}_{suffix}"
 
 def get_character_by_id(char_id: str) -> CharacterResponse:
     conn = get_db_connection()
@@ -155,7 +177,7 @@ def get_location_by_id(loc_id: str) -> LocationResponse:
 def create_character( CharacterCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
-    char_id = generate_id("pers", data.name)
+    char_id = generate_id("pers")
     try:
         cursor.execute("""
         INSERT INTO characters (
@@ -237,7 +259,7 @@ def get_player_inventory():
 def create_location( LocationCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
-    loc_id = generate_id("loc", data.name)
+    loc_id = generate_id("loc")
     try:
         cursor.execute("""
         INSERT INTO locations (
@@ -373,7 +395,69 @@ def chat(req: ChatRequest):
         logger.error(f"Chat error: {e}")
         return {"dialogue": "Что-то не так...", "action": "silent"}
 
-# === ИНВЕНТАРЬ ===
+# === ИНВЕНТАРЬ И ОДЕЖДА ===
+
+@app.post("/item", response_model=ItemResponse)
+def create_item( ItemCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    item_id = generate_id("it")
+    try:
+        cursor.execute("""
+        INSERT INTO items (id, item_type, name, description, layer, is_dirty)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (item_id, data.item_type, data.name, data.description, data.layer, data.is_dirty))
+        conn.commit()
+        conn.close()
+        return get_item_by_id(item_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_item_by_id(item_id: str) -> ItemResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return ItemResponse(**dict(row))
+
+@app.post("/object", response_model=ObjectResponse)
+def create_object( ObjectCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    obj_id = generate_id("obj")
+    try:
+        player = get_player()
+        cursor.execute("""
+        INSERT INTO location_objects (
+            id, location_id, name, object_type, description,
+            is_interactable, is_container
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            obj_id, player.location_id, data.name, data.object_type,
+            data.description, data.is_interactable, data.is_container
+        ))
+        conn.commit()
+        conn.close()
+        return get_object_by_id(obj_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create object error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_object_by_id(obj_id: str) -> ObjectResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_objects WHERE id = ?", (obj_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Object not found")
+    return ObjectResponse(**dict(row))
 
 @app.post("/item/{item_id}/wear")
 def wear_item(item_id: str,  WearRequest):
@@ -395,21 +479,65 @@ def wear_item(item_id: str,  WearRequest):
         logger.error(f"Wear item error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/item/{item_id}")
-def delete_item(item_id: str):
+@app.post("/item/{item_id}/drop_on_floor")
+def drop_item_on_floor(item_id: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         player = get_player()
-        cursor.execute("DELETE FROM items WHERE id = ? AND current_holder_id = ?", (item_id, player.id))
+        cursor.execute("SELECT location_id FROM characters WHERE id = ?", (player.id,))
+        loc_row = cursor.fetchone()
+        if not loc_row:
+            raise HTTPException(status_code=404, detail="Player location not found")
+        current_loc = loc_row[0]
+
+        cursor.execute("""
+            UPDATE items 
+            SET current_holder_id = NULL,
+                worn_by_id = NULL,
+                current_location_id = ?,
+                current_object_id = NULL
+            WHERE id = ? AND current_holder_id = ?
+        """, (current_loc, item_id, player.id))
+
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Item not found or not owned")
+
         conn.commit()
         conn.close()
-        return {"status": "deleted"}
+        return {"status": "dropped on floor", "location_id": current_loc}
     except Exception as e:
         conn.close()
-        logger.error(f"Delete item error: {e}")
+        logger.error(f"Drop on floor error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/item/{item_id}/pickup")
+def pickup_item(item_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        player = get_player()
+        cursor.execute("SELECT current_location_id FROM items WHERE id = ?", (item_id,))
+        item_row = cursor.fetchone()
+        if not item_row or not item_row[0]:
+            raise HTTPException(status_code=404, detail="Item not on floor")
+
+        cursor.execute("""
+            UPDATE items 
+            SET current_holder_id = ?,
+                current_location_id = NULL
+            WHERE id = ? AND current_location_id = ?
+        """, (player.id, item_id, item_row[0]))
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Item not available")
+
+        conn.commit()
+        conn.close()
+        return {"status": "picked up"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Pickup item error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # === РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ ===
@@ -492,6 +620,67 @@ def delete_location(loc_id: str):
         logger.error(f"Delete location error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.patch("/item/{item_id}")
+def update_item(item_id: str,  ItemCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE items SET
+            name = ?, item_type = ?, description = ?, layer = ?, is_dirty = ?
+        WHERE id = ?
+        """, (data.name, data.item_type, data.description, data.layer, data.is_dirty, item_id))
+        conn.commit()
+        conn.close()
+        return {"status": "updated"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/item/{item_id}")
+def delete_item(item_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Item not found")
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === ЛОКАЦИЯ: ОБЪЕКТЫ И ПРЕДМЕТЫ НА ПОЛУ ===
+
+@app.get("/location/{loc_id}/objects", response_model=List[ObjectResponse])
+def get_location_objects(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_objects WHERE location_id = ?", (loc_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [ObjectResponse(**dict(row)) for row in rows]
+
+@app.get("/location/{loc_id}/items", response_model=List[ItemResponse])
+def get_location_items(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            id, item_type, name, description,
+            current_location_id, current_object_id, current_holder_id, worn_by_id,
+            layer, is_dirty
+        FROM items
+        WHERE current_location_id = ? AND current_holder_id IS NULL
+    """, (loc_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [ItemResponse(**dict(row)) for row in rows]
+
 @app.get("/")
 def root():
-    return {"message": "CitySim AI Server v0.8.0 — ready!"}
+    return {"message": "CitySim AI Server v1.0.0 — ready for simulation!"}

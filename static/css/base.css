@@ -76,3 +76,15 @@ h2, h3, h4 {
 .compact-list li:last-child {
   border: none;
 }
+
+.dev-controls {
+  display: none;
+  padding: 10px;
+  background: #f0f8ff;
+  border: 1px dashed #4a90e2;
+  border-radius: 6px;
+}
+
+.dev-mode .dev-controls {
+  display: block;
+}
