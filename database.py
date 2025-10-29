@@ -109,6 +109,49 @@ def init_db():
         dropped_at TEXT DEFAULT (datetime('now'))
     )""")
 
+    # Шаблоны предметов
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS item_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_it_%'),
+        name TEXT NOT NULL,
+        item_type TEXT NOT NULL,
+        description TEXT,
+        layer INTEGER DEFAULT 0,
+        is_dirty BOOLEAN DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    # Шаблоны объектов
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS object_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_obj_%'),
+        name TEXT NOT NULL,
+        object_type TEXT NOT NULL,
+        description TEXT,
+        is_interactable BOOLEAN DEFAULT 1,
+        is_container BOOLEAN DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    # Шаблоны персонажей
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS character_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_pers_%'),
+        name TEXT NOT NULL,
+        surname TEXT,
+        patronymic TEXT,
+        age INTEGER,
+        gender TEXT,
+        role TEXT NOT NULL,
+        occupation TEXT,
+        personality TEXT,
+        current_goal TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS location_effects (
         id TEXT PRIMARY KEY CHECK (id LIKE 'eff_%'),
@@ -131,6 +174,23 @@ def init_db():
         season TEXT NOT NULL DEFAULT 'осень',
         day_of_week TEXT NOT NULL DEFAULT 'воскресенье'
     )""")
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_loc_%'),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        parent_id TEXT,
+        address TEXT,
+        owner_id TEXT,
+        description TEXT,
+        open_time TEXT,
+        close_time TEXT,
+        is_always_open BOOLEAN DEFAULT 0,
+        lock_type INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
 
     cursor.execute("INSERT OR IGNORE INTO world_state (id) VALUES (1)")
     conn.commit()

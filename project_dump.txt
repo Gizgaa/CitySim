@@ -1,0 +1,3437 @@
+=== collect_project_files.py ===
+import os
+from pathlib import Path
+
+# Расширения, которые нужно собрать
+EXTENSIONS = {'.py', '.js', '.css', '.html'}
+
+# Имя выходного файла
+OUTPUT_FILE = 'project_dump.txt'
+
+def collect_files(root_dir: str = '.', output_file: str = OUTPUT_FILE):
+    root_path = Path(root_dir).resolve()
+    output_path = root_path / output_file
+
+    with open(output_path, 'w', encoding='utf-8') as out_f:
+        for file_path in sorted(root_path.rglob('*')):
+            if file_path.is_file() and file_path.suffix.lower() in EXTENSIONS:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        rel_path = file_path.relative_to(root_path)
+                        out_f.write(f'=== {rel_path} ===\n')
+                        out_f.write(f.read())
+                        out_f.write('\n\n')
+                    print(f'Добавлен: {rel_path}')
+                except Exception as e:
+                    print(f'Ошибка чтения {file_path}: {e}')
+
+    print(f'\n✅ Сбор завершён. Результат сохранён в: {output_path}')
+
+if __name__ == '__main__':
+    collect_files()
+
+=== database.py ===
+# database.py
+import sqlite3
+import os
+
+DB_PATH = "game_data/game.db"
+
+def init_db():
+    os.makedirs("game_data", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_types (
+        type_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        default_open_time TEXT,
+        default_close_time TEXT,
+        is_indoor BOOLEAN
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS locations (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'loc_%'),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        parent_id TEXT REFERENCES locations(id),
+        address TEXT,
+        owner_id TEXT,
+        description TEXT,
+        open_time TEXT,
+        close_time TEXT,
+        is_always_open BOOLEAN DEFAULT 0,
+        is_locked BOOLEAN DEFAULT 0,
+        lock_type INTEGER DEFAULT 1,
+        required_key_id TEXT,
+        capacity INTEGER DEFAULT 100,
+        light_level REAL DEFAULT 1.0,
+        temperature REAL DEFAULT 22.0,
+        cleanliness REAL DEFAULT 1.0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_connections (
+        from_location_id TEXT NOT NULL CHECK (from_location_id LIKE 'loc_%'),
+        to_location_id TEXT NOT NULL CHECK (to_location_id LIKE 'loc_%'),
+        connection_type TEXT DEFAULT 'door',
+        description TEXT,
+        is_bidirectional BOOLEAN DEFAULT 1,
+        requires_key_id TEXT,
+        requires_permission TEXT,
+        is_blocked BOOLEAN DEFAULT 0,
+        FOREIGN KEY (from_location_id) REFERENCES locations(id),
+        FOREIGN KEY (to_location_id) REFERENCES locations(id),
+        PRIMARY KEY (from_location_id, to_location_id)
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS characters (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'pers_%'),
+        name TEXT NOT NULL,
+        surname TEXT,
+        patronymic TEXT,
+        age INTEGER,
+        gender TEXT,
+        role TEXT NOT NULL,
+        location_id TEXT NOT NULL CHECK (location_id LIKE 'loc_%'),
+        occupation TEXT,
+        personality TEXT,
+        current_goal TEXT,
+        health INTEGER DEFAULT 100,
+        energy INTEGER DEFAULT 100,
+        stress INTEGER DEFAULT 0,
+        social INTEGER DEFAULT 50,
+        FOREIGN KEY (location_id) REFERENCES locations(id)
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_objects (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'obj_%'),
+        location_id TEXT NOT NULL CHECK (location_id LIKE 'loc_%'),
+        name TEXT NOT NULL,
+        object_type TEXT NOT NULL,
+        description TEXT,
+        is_interactable BOOLEAN DEFAULT 1,
+        is_container BOOLEAN DEFAULT 0,
+        capacity INTEGER DEFAULT 10,
+        current_fill INTEGER DEFAULT 0,
+        owner_id TEXT,
+        FOREIGN KEY (location_id) REFERENCES locations(id)
+    )""")
+
+    # ИСПРАВЛЕНО: добавлены worn_by_id, layer, is_dirty
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS items (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'it_%'),
+        item_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        current_location_id TEXT CHECK (current_location_id LIKE 'loc_%'),
+        current_object_id TEXT CHECK (current_object_id LIKE 'obj_%'),
+        current_holder_id TEXT CHECK (current_holder_id LIKE 'pers_%'),
+        worn_by_id TEXT CHECK (worn_by_id LIKE 'pers_%'),
+        layer INTEGER DEFAULT 0,
+        is_dirty BOOLEAN DEFAULT 0,
+        dropped_by TEXT CHECK (dropped_by LIKE 'pers_%'),
+        dropped_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    # Шаблоны предметов
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS item_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_it_%'),
+        name TEXT NOT NULL,
+        item_type TEXT NOT NULL,
+        description TEXT,
+        layer INTEGER DEFAULT 0,
+        is_dirty BOOLEAN DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    # Шаблоны объектов
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS object_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_obj_%'),
+        name TEXT NOT NULL,
+        object_type TEXT NOT NULL,
+        description TEXT,
+        is_interactable BOOLEAN DEFAULT 1,
+        is_container BOOLEAN DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    # Шаблоны персонажей
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS character_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_pers_%'),
+        name TEXT NOT NULL,
+        surname TEXT,
+        patronymic TEXT,
+        age INTEGER,
+        gender TEXT,
+        role TEXT NOT NULL,
+        occupation TEXT,
+        personality TEXT,
+        current_goal TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_effects (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'eff_%'),
+        target_location_id TEXT CHECK (target_location_id LIKE 'loc_%'),
+        target_object_id TEXT CHECK (target_object_id LIKE 'obj_%'),
+        effect_type TEXT NOT NULL,
+        intensity REAL DEFAULT 1.0,
+        duration_seconds INTEGER,
+        applied_by TEXT CHECK (applied_by LIKE 'pers_%'),
+        applied_at TEXT DEFAULT (datetime('now')),
+        expires_at TEXT
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS world_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        current_timestamp TEXT NOT NULL DEFAULT '2025-10-26T08:00:00',
+        weather TEXT NOT NULL DEFAULT 'пасмурно',
+        temperature REAL DEFAULT 12.0,
+        season TEXT NOT NULL DEFAULT 'осень',
+        day_of_week TEXT NOT NULL DEFAULT 'воскресенье'
+    )""")
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_templates (
+        id TEXT PRIMARY KEY CHECK (id LIKE 'tpl_loc_%'),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        parent_id TEXT,
+        address TEXT,
+        owner_id TEXT,
+        description TEXT,
+        open_time TEXT,
+        close_time TEXT,
+        is_always_open BOOLEAN DEFAULT 0,
+        lock_type INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+    """)
+
+    cursor.execute("INSERT OR IGNORE INTO world_state (id) VALUES (1)")
+    conn.commit()
+    conn.close()
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+=== SitySim.py ===
+# CitySim.py
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from typing import List, Optional
+import logging
+import requests
+import random
+import string
+import time
+from database import init_db, get_db_connection
+
+init_db()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="CitySim AI Server", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# === МОДЕЛИ ===
+
+class CharacterCreate(BaseModel):
+    name: str
+    surname: str
+    patronymic: Optional[str] = None
+    age: int
+    gender: str
+    role: str
+    location_id: str
+    occupation: Optional[str] = None
+    personality: Optional[str] = None
+    current_goal: Optional[str] = None
+
+class CharacterResponse(BaseModel):
+    id: str
+    name: str
+    surname: str
+    patronymic: Optional[str]
+    age: int
+    gender: str
+    role: str
+    location_id: str
+    occupation: Optional[str]
+    personality: Optional[str]
+    current_goal: Optional[str]
+    health: int
+    energy: int
+    stress: int
+    social: int
+
+class LocationCreate(BaseModel):
+    name: str
+    type: str
+    parent_id: Optional[str] = None
+    address: Optional[str] = None
+    owner_id: Optional[str] = None
+    description: Optional[str] = None
+    open_time: Optional[str] = None
+    close_time: Optional[str] = None
+    is_always_open: bool = False
+    lock_type: int = 1
+
+class LocationResponse(BaseModel):
+    id: str
+    name: str
+    type: str
+    parent_id: Optional[str]
+    address: Optional[str]
+    owner_id: Optional[str]
+    description: Optional[str]
+    open_time: Optional[str]
+    close_time: Optional[str]
+    is_always_open: bool
+    is_locked: bool
+    lock_type: int
+    capacity: int
+    light_level: float
+    temperature: float
+    cleanliness: float
+
+class ItemCreate(BaseModel):
+    name: str
+    item_type: str
+    description: Optional[str] = None
+    layer: Optional[int] = 0
+    is_dirty: Optional[bool] = False
+
+class ItemResponse(BaseModel):
+    id: str
+    item_type: str
+    name: str
+    description: Optional[str]
+    current_location_id: Optional[str]
+    current_object_id: Optional[str]
+    current_holder_id: Optional[str]
+    worn_by_id: Optional[str]
+    layer: int
+    is_dirty: bool
+
+class ObjectCreate(BaseModel):
+    name: str
+    object_type: str
+    description: Optional[str] = None
+    is_interactable: Optional[bool] = True
+    is_container: Optional[bool] = False
+
+class ObjectResponse(BaseModel):
+    id: str
+    name: str
+    object_type: str
+    description: Optional[str]
+    is_interactable: bool
+    is_container: bool
+
+class WorldStateResponse(BaseModel):
+    current_timestamp: str
+    weather: str
+    temperature: float
+    season: str
+    day_of_week: str
+
+class WorldStateUpdate(BaseModel):
+    current_timestamp: Optional[str] = None
+    weather: Optional[str] = None
+    temperature: Optional[float] = None
+    season: Optional[str] = None
+    day_of_week: Optional[str] = None
+
+class ChatRequest(BaseModel):
+    npc_id: str
+    player_message: str
+
+class WearRequest(BaseModel):
+    wear: bool
+    
+class CharacterTemplateCreate(BaseModel):
+    name: str
+    surname: str
+    patronymic: Optional[str] = None
+    age: int
+    gender: str
+    role: str = "npc"
+    occupation: Optional[str] = None
+    personality: Optional[str] = None
+    current_goal: Optional[str] = None
+
+class ObjectTemplateCreate(BaseModel):
+    name: str
+    object_type: str
+    description: Optional[str] = None
+    is_interactable: bool = True
+    is_container: bool = False
+
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+
+def generate_id(prefix: str) -> str:
+    """Генерирует уникальный ID вида: prefix_1761480000000_a3b9c2d1"""
+    timestamp = int(time.time() * 1000)
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    return f"{prefix}_{timestamp}_{suffix}"
+
+def get_character_by_id(char_id: str) -> CharacterResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM characters WHERE id = ?", (char_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return CharacterResponse(**dict(row))
+
+def get_location_by_id(loc_id: str) -> LocationResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM locations WHERE id = ?", (loc_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Location not found")
+    return LocationResponse(**dict(row))
+
+# === ЭНДПОИНТЫ ===
+
+@app.post("/character", response_model=CharacterResponse)
+def create_character( CharacterCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    char_id = generate_id("pers")
+    try:
+        cursor.execute("""
+        INSERT INTO characters (
+            id, name, surname, patronymic, age, gender, role, location_id,
+            occupation, personality, current_goal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            char_id, data.name, data.surname, data.patronymic, data.age,
+            data.gender, data.role, data.location_id, data.occupation,
+            data.personality, data.current_goal
+        ))
+        conn.commit()
+        conn.close()
+        return get_character_by_id(char_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create character error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/character/{char_id}", response_model=CharacterResponse)
+def get_character(char_id: str):
+    return get_character_by_id(char_id)
+
+@app.get("/characters", response_model=List[CharacterResponse])
+def list_characters(location_id: Optional[str] = Query(None)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if location_id:
+        cursor.execute("SELECT * FROM characters WHERE location_id = ?", (location_id,))
+    else:
+        cursor.execute("SELECT * FROM characters")
+    rows = cursor.fetchall()
+    conn.close()
+    return [CharacterResponse(**dict(row)) for row in rows]
+
+@app.get("/player", response_model=CharacterResponse)
+def get_player():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM characters WHERE role = 'player' LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return CharacterResponse(**dict(row))
+
+@app.post("/player/location/{new_location_id}")
+def update_player_location(new_location_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        player = get_player()
+        cursor.execute("UPDATE characters SET location_id = ? WHERE id = ?", 
+                      (new_location_id, player.id))
+        conn.commit()
+        conn.close()
+        return {"status": "location updated"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update player location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/player/inventory", response_model=List[ItemResponse])
+def get_player_inventory():
+    player = get_player()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT *,
+               CASE WHEN worn_by_id IS NOT NULL THEN 1 ELSE 0 END AS is_worn
+        FROM items
+        WHERE current_holder_id = ? OR worn_by_id = ?
+    """, (player.id, player.id))
+    rows = cursor.fetchall()
+    conn.close()
+    return [ItemResponse(**dict(row)) for row in rows]
+
+@app.post("/location", response_model=LocationResponse)
+def create_location( LocationCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    loc_id = generate_id("loc")
+    try:
+        cursor.execute("""
+        INSERT INTO locations (
+            id, name, type, parent_id, address, owner_id, description,
+            open_time, close_time, is_always_open, lock_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            loc_id, data.name, data.type, data.parent_id, data.address,
+            data.owner_id, data.description, data.open_time, data.close_time,
+            data.is_always_open, data.lock_type
+        ))
+        conn.commit()
+        conn.close()
+        return get_location_by_id(loc_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/location/{loc_id}", response_model=LocationResponse)
+def get_location(loc_id: str):
+    return get_location_by_id(loc_id)
+
+@app.get("/locations", response_model=List[LocationResponse])
+def list_all_locations():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM locations")
+    rows = cursor.fetchall()
+    conn.close()
+    return [LocationResponse(**dict(row)) for row in rows]
+
+@app.get("/location/{loc_id}/neighbors")
+def get_location_neighbors(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        -- Прямые выходы
+        SELECT l.id, l.name, lc.connection_type, lc.description
+        FROM location_connections lc
+        JOIN locations l ON lc.to_location_id = l.id
+        WHERE lc.from_location_id = ?
+        
+        UNION
+        
+        -- Обратные выходы (если связь двусторонняя)
+        SELECT l.id, l.name, lc.connection_type, lc.description
+        FROM location_connections lc
+        JOIN locations l ON lc.from_location_id = l.id
+        WHERE lc.to_location_id = ? AND lc.is_bidirectional = 1
+    """, (loc_id, loc_id))
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "connection_type": row["connection_type"],
+            "description": row["description"]
+        }
+        for row in rows
+    ]
+
+@app.get("/world", response_model=WorldStateResponse)
+def get_world_state():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM world_state WHERE id = 1")
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=500, detail="World state not initialized")
+    return WorldStateResponse(**dict(row))
+
+@app.patch("/world")
+def update_world_state( WorldStateUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    fields = []
+    values = []
+    for key, value in data.model_dump(exclude_unset=True).items():
+        fields.append(f"{key} = ?")
+        values.append(value)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    query = f"UPDATE world_state SET {', '.join(fields)} WHERE id = 1"
+    cursor.execute(query, values)
+    conn.commit()
+    conn.close()
+    return {"status": "updated"}
+
+@app.post("/npc/chat")
+def chat(req: ChatRequest):
+    logger.info(f"Chat with {req.npc_id}: {req.player_message}")
+    try:
+        npc = get_character_by_id(req.npc_id)
+        loc = get_location_by_id(npc.location_id)
+    except HTTPException:
+        raise HTTPException(status_code=404, detail="NPC or location not found")
+
+    prompt = f"""Ты — {npc.name} {npc.surname}, {npc.age} лет, {npc.occupation or 'без работы'}.
+Ты находишься в локации: {loc.name} (ID: {loc.id}).
+Твоя личность: {npc.personality}.
+Твоё состояние: энергия={npc.energy}, стресс={npc.stress}.
+
+Игрок говорит: "{req.player_message}"
+
+Ответь коротко, естественно, как живой человек. Не упоминай, что ты ИИ.
+Твой ответ:""".strip()
+
+    try:
+        response = requests.post(
+            "http://localhost:8080/completion",
+            json={
+                "prompt": prompt,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "repeat_penalty": 1.1,
+                "max_tokens": 150,
+                "stop": ["\n", "Игрок:"]
+            },
+            timeout=45
+        )
+        if response.status_code == 200:
+            ai_text = response.json().get("content", "").strip()
+            if not ai_text:
+                ai_text = "Хм... не знаю, что сказать."
+            return {"dialogue": ai_text, "action": "speak"}
+        else:
+            logger.error(f"llama-server error: {response.status_code}")
+            return {"dialogue": "Не могу сейчас ответить...", "action": "silent"}
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        return {"dialogue": "Что-то не так...", "action": "silent"}
+
+# === ИНВЕНТАРЬ И ОДЕЖДА ===
+
+@app.post("/item", response_model=ItemResponse)
+def create_item( ItemCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    item_id = generate_id("it")
+    try:
+        cursor.execute("""
+        INSERT INTO items (id, item_type, name, description, layer, is_dirty)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (item_id, data.item_type, data.name, data.description, data.layer, data.is_dirty))
+        conn.commit()
+        conn.close()
+        return get_item_by_id(item_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_item_by_id(item_id: str) -> ItemResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return ItemResponse(**dict(row))
+
+@app.post("/object", response_model=ObjectResponse)
+def create_object( ObjectCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    obj_id = generate_id("obj")
+    try:
+        player = get_player()
+        cursor.execute("""
+        INSERT INTO location_objects (
+            id, location_id, name, object_type, description,
+            is_interactable, is_container
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            obj_id, player.location_id, data.name, data.object_type,
+            data.description, data.is_interactable, data.is_container
+        ))
+        conn.commit()
+        conn.close()
+        return get_object_by_id(obj_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create object error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_object_by_id(obj_id: str) -> ObjectResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_objects WHERE id = ?", (obj_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Object not found")
+    return ObjectResponse(**dict(row))
+
+@app.post("/item/{item_id}/wear")
+def wear_item(item_id: str,  WearRequest):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        player = get_player()
+        if data.wear:
+            cursor.execute("UPDATE items SET worn_by_id = ? WHERE id = ? AND current_holder_id = ?", 
+                          (player.id, item_id, player.id))
+        else:
+            cursor.execute("UPDATE items SET worn_by_id = NULL WHERE id = ? AND worn_by_id = ?", 
+                          (item_id, player.id))
+        conn.commit()
+        conn.close()
+        return {"status": "updated"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Wear item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/item/{item_id}/drop_on_floor")
+def drop_item_on_floor(item_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        player = get_player()
+        cursor.execute("SELECT location_id FROM characters WHERE id = ?", (player.id,))
+        loc_row = cursor.fetchone()
+        if not loc_row:
+            raise HTTPException(status_code=404, detail="Player location not found")
+        current_loc = loc_row[0]
+
+        cursor.execute("""
+            UPDATE items 
+            SET current_holder_id = NULL,
+                worn_by_id = NULL,
+                current_location_id = ?,
+                current_object_id = NULL
+            WHERE id = ? AND current_holder_id = ?
+        """, (current_loc, item_id, player.id))
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Item not found or not owned")
+
+        conn.commit()
+        conn.close()
+        return {"status": "dropped on floor", "location_id": current_loc}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Drop on floor error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/item/{item_id}/pickup")
+def pickup_item(item_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        player = get_player()
+        cursor.execute("SELECT current_location_id FROM items WHERE id = ?", (item_id,))
+        item_row = cursor.fetchone()
+        if not item_row or not item_row[0]:
+            raise HTTPException(status_code=404, detail="Item not on floor")
+
+        cursor.execute("""
+            UPDATE items 
+            SET current_holder_id = ?,
+                current_location_id = NULL
+            WHERE id = ? AND current_location_id = ?
+        """, (player.id, item_id, item_row[0]))
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Item not available")
+
+        conn.commit()
+        conn.close()
+        return {"status": "picked up"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Pickup item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ ===
+
+@app.patch("/character/{char_id}", response_model=CharacterResponse)
+def update_character(char_id: str,  CharacterCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE characters SET
+            name = ?, surname = ?, patronymic = ?, age = ?, gender = ?,
+            role = ?, location_id = ?, occupation = ?, personality = ?, current_goal = ?
+        WHERE id = ?
+        """, (
+            data.name, data.surname, data.patronymic, data.age,
+            data.gender, data.role, data.location_id, data.occupation,
+            data.personality, data.current_goal, char_id
+        ))
+        conn.commit()
+        conn.close()
+        return get_character_by_id(char_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update character error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/character/{char_id}")
+def delete_character(char_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM characters WHERE id = ?", (char_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Character not found")
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete character error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/location/{loc_id}", response_model=LocationResponse)
+def update_location(loc_id: str,  LocationCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE locations SET
+            name = ?, type = ?, parent_id = ?, address = ?, owner_id = ?,
+            description = ?, open_time = ?, close_time = ?, is_always_open = ?, lock_type = ?
+        WHERE id = ?
+        """, (
+            data.name, data.type, data.parent_id, data.address, data.owner_id,
+            data.description, data.open_time, data.close_time,
+            data.is_always_open, data.lock_type, loc_id
+        ))
+        conn.commit()
+        conn.close()
+        return get_location_by_id(loc_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/location/{loc_id}")
+def delete_location(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM locations WHERE id = ?", (loc_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Location not found")
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/item/{item_id}")
+def update_item(item_id: str,  ItemCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE items SET
+            name = ?, item_type = ?, description = ?, layer = ?, is_dirty = ?
+        WHERE id = ?
+        """, (data.name, data.item_type, data.description, data.layer, data.is_dirty, item_id))
+        conn.commit()
+        conn.close()
+        return {"status": "updated"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Update item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/item/{item_id}")
+def delete_item(item_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Item not found")
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete item error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === ЛОКАЦИЯ: ОБЪЕКТЫ И ПРЕДМЕТЫ НА ПОЛУ ===
+
+@app.get("/location/{loc_id}/objects", response_model=List[ObjectResponse])
+def get_location_objects(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_objects WHERE location_id = ?", (loc_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [ObjectResponse(**dict(row)) for row in rows]
+
+@app.get("/location/{loc_id}/items", response_model=List[ItemResponse])
+def get_location_items(loc_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            id, item_type, name, description,
+            current_location_id, current_object_id, current_holder_id, worn_by_id,
+            layer, is_dirty
+        FROM items
+        WHERE current_location_id = ? AND current_holder_id IS NULL
+    """, (loc_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [ItemResponse(**dict(row)) for row in rows]
+    
+class ConnectionCreate(BaseModel):
+    from_location_id: str
+    to_location_id: str
+    is_bidirectional: bool = True
+
+@app.post("/location_connection")
+def create_connection(data: ConnectionCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Прямая связь
+        cursor.execute("""
+            INSERT OR REPLACE INTO location_connections 
+            (from_location_id, to_location_id, is_bidirectional)
+            VALUES (?, ?, ?)
+        """, (data.from_location_id, data.to_location_id, data.is_bidirectional))
+        # Обратная связь, если двусторонняя
+        if data.is_bidirectional:
+            cursor.execute("""
+                INSERT OR REPLACE INTO location_connections 
+                (from_location_id, to_location_id, is_bidirectional)
+                VALUES (?, ?, ?)
+            """, (data.to_location_id, data.from_location_id, True))
+        conn.commit()
+        conn.close()
+        return {"status": "created"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/location_connection/{from_id}/{to_id}")
+def delete_connection(from_id: str, to_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM location_connections WHERE from_location_id = ? AND to_location_id = ?", (from_id, to_id))
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+class LocationConnectionCreate(BaseModel):
+    from_location_id: str
+    to_location_id: str
+    connection_type: str = "door"
+    description: Optional[str] = None
+    is_bidirectional: bool = True
+    requires_key_id: Optional[str] = None
+
+@app.post("/location_connection")
+def create_location_connection( LocationConnectionCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO location_connections (
+                from_location_id, to_location_id, connection_type, description,
+                is_bidirectional, requires_key_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            data.from_location_id, data.to_location_id, data.connection_type,
+            data.description, data.is_bidirectional, data.requires_key_id
+        ))
+        conn.commit()
+        conn.close()
+        return {"status": "created"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/location_connection/{from_id}/{to_id}")
+def delete_location_connection(from_id: str, to_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM location_connections WHERE from_location_id = ? AND to_location_id = ?", (from_id, to_id))
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+@app.get("/items", response_model=List[ItemResponse])
+def list_all_items():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM items")
+    rows = cursor.fetchall()
+    conn.close()
+    return [ItemResponse(**dict(row)) for row in rows]
+    
+class ItemTemplateCreate(BaseModel):
+    name: str
+    item_type: str
+    description: Optional[str] = None
+    layer: Optional[int] = 0
+    is_dirty: Optional[bool] = False
+
+@app.post("/item_template", response_model=ItemResponse)
+def create_item_template( ItemTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_it")
+    try:
+        cursor.execute("""
+        INSERT INTO item_templates (
+            id, name, item_type, description, layer, is_dirty
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (tpl_id, data.name, data.item_type, data.description, data.layer, data.is_dirty))
+        conn.commit()
+        conn.close()
+        return get_item_template_by_id(tpl_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create item template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_item_template_by_id(tpl_id: str) -> ItemResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_templates WHERE id = ?", (tpl_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item template not found")
+    # Преобразуем в ItemResponse (без ID, location, holder и т.д.)
+    item_data = dict(row)
+    del item_data['id']
+    del item_data['created_at']
+    return ItemResponse(**item_data)
+
+@app.get("/item_templates", response_model=List[ItemResponse])
+def list_item_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [get_item_template_by_id(row["id"]) for row in rows]
+    
+class LocationTemplateCreate(BaseModel):
+    name: str
+    type: str
+    parent_id: Optional[str] = None
+    address: Optional[str] = None
+    owner_id: Optional[str] = None
+    description: Optional[str] = None
+    open_time: Optional[str] = None
+    close_time: Optional[str] = None
+    is_always_open: bool = False
+    lock_type: int = 1
+
+@app.post("/location_template", response_model=LocationResponse)
+def create_location_template( LocationTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_loc")
+    try:
+        cursor.execute("""
+        INSERT INTO location_templates (
+            id, name, type, parent_id, address, owner_id, description,
+            open_time, close_time, is_always_open, lock_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tpl_id, data.name, data.type, data.parent_id, data.address,
+            data.owner_id, data.description, data.open_time, data.close_time,
+            data.is_always_open, data.lock_type
+        ))
+        conn.commit()
+        conn.close()
+        # Возвращаем как LocationResponse (без ID шаблона)
+        return LocationResponse(
+            id="",  # не возвращаем реальный ID
+            name=data.name,
+            type=data.type,
+            parent_id=data.parent_id,
+            address=data.address,
+            owner_id=data.owner_id,
+            description=data.description,
+            open_time=data.open_time,
+            close_time=data.close_time,
+            is_always_open=data.is_always_open,
+            is_locked=False,
+            lock_type=data.lock_type,
+            capacity=100,
+            light_level=1.0,
+            temperature=22.0,
+            cleanliness=1.0
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create location template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/location_templates", response_model=List[LocationResponse])
+def list_location_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        LocationResponse(
+            id="", name=r["name"], type=r["type"], parent_id=r["parent_id"],
+            address=r["address"], owner_id=r["owner_id"], description=r["description"],
+            open_time=r["open_time"], close_time=r["close_time"],
+            is_always_open=bool(r["is_always_open"]), is_locked=False,
+            lock_type=r["lock_type"], capacity=100, light_level=1.0,
+            temperature=22.0, cleanliness=1.0
+        )
+        for r in rows
+    ]
+    
+@app.get("/objects", response_model=List[ObjectResponse])
+def list_all_objects():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_objects")
+    rows = cursor.fetchall()
+    conn.close()
+    return [ObjectResponse(**dict(row)) for row in rows]
+    
+# === ШАБЛОНЫ ===
+
+class ItemTemplateCreate(BaseModel):
+    name: str
+    item_type: str
+    description: Optional[str] = None
+    layer: Optional[int] = 0
+    is_dirty: Optional[bool] = False
+
+@app.post("/item_template", response_model=ItemResponse)
+def create_item_template( ItemTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_it")
+    try:
+        cursor.execute("""
+        INSERT INTO item_templates (
+            id, name, item_type, description, layer, is_dirty
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (tpl_id, data.name, data.item_type, data.description, data.layer, data.is_dirty))
+        conn.commit()
+        conn.close()
+        return ItemResponse(
+            id="", name=data.name, item_type=data.item_type,
+            description=data.description, layer=data.layer, is_dirty=data.is_dirty,
+            current_location_id=None, current_object_id=None,
+            current_holder_id=None, worn_by_id=None
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create item template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/item_templates", response_model=List[ItemResponse])
+def list_item_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        ItemResponse(
+            id="", name=r["name"], item_type=r["item_type"],
+            description=r["description"], layer=r["layer"], is_dirty=bool(r["is_dirty"]),
+            current_location_id=None, current_object_id=None,
+            current_holder_id=None, worn_by_id=None
+        )
+        for r in rows
+    ]
+    
+@app.post("/character_template", response_model=CharacterResponse)
+def create_character_template(data: CharacterTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_pers")
+    try:
+        cursor.execute("""
+        INSERT INTO character_templates (
+            id, name, surname, patronymic, age, gender, role,
+            occupation, personality, current_goal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tpl_id, data.name, data.surname, data.patronymic, data.age,
+            data.gender, data.role, data.occupation,
+            data.personality, data.current_goal
+        ))
+        conn.commit()
+        conn.close()
+        # Возвращаем как CharacterResponse без location_id и ID
+        return CharacterResponse(
+            id="",
+            name=data.name,
+            surname=data.surname,
+            patronymic=data.patronymic,
+            age=data.age,
+            gender=data.gender,
+            role=data.role,
+            location_id="",  # ← шаблон не имеет локации
+            occupation=data.occupation,
+            personality=data.personality,
+            current_goal=data.current_goal,
+            health=100,
+            energy=100,
+            stress=0,
+            social=50
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create character template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/character_templates", response_model=List[CharacterResponse])
+def list_character_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM character_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        CharacterResponse(
+            id="",
+            name=r["name"],
+            surname=r["surname"],
+            patronymic=r["patronymic"],
+            age=r["age"],
+            gender=r["gender"],
+            role=r["role"],
+            location_id="",  # ← нет локации у шаблона
+            occupation=r["occupation"],
+            personality=r["personality"],
+            current_goal=r["current_goal"],
+            health=100,
+            energy=100,
+            stress=0,
+            social=50
+        )
+        for r in rows
+    ]
+    
+@app.post("/object_template", response_model=ObjectResponse)
+def create_object_template(data: ObjectTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_obj")
+    try:
+        cursor.execute("""
+        INSERT INTO object_templates (
+            id, name, object_type, description, is_interactable, is_container
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            tpl_id, data.name, data.object_type, data.description,
+            data.is_interactable, data.is_container
+        ))
+        conn.commit()
+        conn.close()
+        return ObjectResponse(
+            id="",
+            name=data.name,
+            object_type=data.object_type,
+            description=data.description,
+            is_interactable=data.is_interactable,
+            is_container=data.is_container
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create object template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/object_templates", response_model=List[ObjectResponse])
+def list_object_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM object_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        ObjectResponse(
+            id="",
+            name=r["name"],
+            object_type=r["object_type"],
+            description=r["description"],
+            is_interactable=bool(r["is_interactable"]),
+            is_container=bool(r["is_container"])
+        )
+        for r in rows
+    ]
+
+@app.get("/")
+def root():
+    return {"message": "CitySim AI Server v1.0.0 — ready for simulation!"}
+
+=== static\css\base.css ===
+/* base.css — фундамент стилей */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --color-bg: #f5f7fa;
+  --color-panel: #ffffff;
+  --color-sidebar: #fafafa;
+  --color-header: #2c3e50;
+  --color-primary: #3498db;
+  --color-danger: #e74c3c;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --border: 1px solid #e0e0e0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: var(--color-bg);
+  color: #333;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Основной макет */
+.main-layout {
+  display: flex;
+  height: calc(100vh - 50px);
+}
+
+.left-panel {
+  flex: 1;
+  padding: 15px;
+  overflow-y: auto;
+  background: var(--color-panel);
+  border-right: var(--border);
+}
+
+.right-panel {
+  width: 320px;
+  padding: 15px;
+  overflow-y: auto;
+  background: var(--color-sidebar);
+  border-left: var(--border);
+}
+
+/* Общие компоненты */
+section {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+h2, h3, h4 {
+  margin-bottom: 10px;
+  color: #2c3e50;
+}
+
+.compact-list {
+  list-style: none;
+  padding: 0;
+}
+
+.compact-list li {
+  padding: 4px 0;
+  color: #555;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.compact-list li:last-child {
+  border: none;
+}
+
+.dev-controls {
+  display: none;
+  padding: 10px;
+  background: #f0f8ff;
+  border: 1px dashed #4a90e2;
+  border-radius: 6px;
+}
+
+.dev-mode .dev-controls {
+  display: block;
+}
+
+=== static\css\chat.css ===
+/* chat.css — стили для чата */
+
+.chat-section {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+#chat-log {
+  height: 150px;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.chat-input {
+  display: flex;
+  margin-top: 10px;
+  gap: 6px;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.chat-input button {
+  padding: 8px 12px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.chat-input button:hover {
+  background: #2980b9;
+}
+
+=== static\css\location.css ===
+/* location.css — стили для локации и выходов */
+
+.location-section h3 {
+  margin-top: 20px;
+  font-size: 1.1em;
+  color: #2c3e50;
+}
+
+.location-section ul {
+  padding-left: 16px;
+}
+
+.location-section li {
+  margin: 4px 0;
+  list-style-type: none;
+  position: relative;
+}
+
+.location-section li::before {
+  content: "•";
+  color: var(--color-primary);
+  position: absolute;
+  left: -16px;
+}
+
+/* Стиль для кликабельных выходов */
+#location-exits li {
+  cursor: pointer;
+  padding: 4px 0;
+  border-bottom: 1px dashed #eee;
+}
+
+#location-exits li:hover {
+  background: #f9f9f9;
+  color: var(--color-primary);
+}
+
+=== static\css\modals.css ===
+/* modals.css — стили для модальных окон */
+
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 2000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.modal-content {
+  background: white;
+  margin: 30px auto;
+  padding: 20px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  border-radius: 12px;
+  position: relative;
+}
+
+.close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+  color: #777;
+}
+
+.close:hover {
+  color: #000;
+}
+
+/* Кнопки в модальных окнах */
+.tool-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-weight: bold;
+}
+
+.tool-btn:hover {
+  background: #2980b9;
+}
+
+/* Формы */
+form label {
+  display: block;
+  margin: 14px 0 6px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+form input,
+form select,
+form textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 15px;
+}
+
+.edit-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.btn-danger {
+  background: var(--color-danger) !important;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #c0392b !important;
+}
+
+=== static\css\npcs.css ===
+/* npcs.css — стили для списка NPC */
+
+#npc-list-right {
+  list-style: none;
+  padding: 0;
+}
+
+#npc-list-right li {
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  color: #2c3e50;
+  transition: color 0.2s;
+}
+
+#npc-list-right li:hover {
+  color: var(--color-primary);
+  background: #f9f9f9;
+}
+
+#npc-list-right li:last-child {
+  border: none;
+}
+
+=== static\css\player-status.css ===
+/* player-status.css — статус игрока и инвентарь */
+
+.player-card h3 {
+  margin-bottom: 12px;
+  color: #2c3e50;
+}
+
+.appearance-placeholder {
+  background: #f8f9fa;
+  padding: 8px;
+  border-radius: 6px;
+  font-style: italic;
+  margin: 10px 0;
+  border: 1px dashed #ccc;
+}
+
+.stats p {
+  margin: 6px 0;
+  font-weight: bold;
+}
+
+.stats span {
+  font-weight: normal;
+  color: #555;
+}
+
+#player-inventory li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inventory-item-icon {
+  font-size: 1.2em;
+  margin-left: 6px;
+}
+
+=== static\css\smartphone.css ===
+/* smartphone.css — смартфон и приложения */
+
+.smartphone h3 {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.apps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.app-btn {
+  padding: 12px 8px;
+  text-align: center;
+  background: #ecf0f1;
+  border: 1px solid #bdc3c7;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background 0.2s;
+}
+
+.app-btn:hover {
+  background: #d5dbdb;
+}
+
+.app-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+=== static\css\top-bar.css ===
+/* top-bar.css — верхняя панель: время, погода, мини-статус */
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 20px;
+  background: var(--color-header);
+  color: white;
+  font-weight: bold;
+  height: 50px;
+}
+
+.time-weather {
+  font-size: 1.1em;
+}
+
+.player-status-mini {
+  font-size: 0.95em;
+  opacity: 0.9;
+}
+
+=== static\index.html ===
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>CitySim</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/top-bar.css">
+  <link rel="stylesheet" href="css/location.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/player-status.css">
+  <link rel="stylesheet" href="css/smartphone.css">
+  <link rel="stylesheet" href="css/modals.css">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="time-weather">
+      <span id="game-time">Загрузка...</span> • 
+      <span id="weather">Загрузка...</span>
+    </div>
+    <div class="player-status-mini">
+      Энергия: <span id="player-energy">--</span> | Стресс: <span id="player-stress">--</span>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <div class="left-panel">
+      <section class="location-section">
+        <h2 id="location-title">Загрузка...</h2>
+        <p id="location-description">Описание локации загружается...</p>
+		
+		<!-- Кнопки Dev Mode -->
+		<div id="dev-controls" class="dev-controls">
+			<button onclick="editLocationField('name')">✎ Название</button>
+			<button onclick="editLocationField('description')">✎ Описание</button>
+			<button onclick="openConnectionsEditor()">🔗 Переходы</button>
+			<button onclick="openItemCreator()">➕ Предмет</button>
+			<button onclick="openObjectCreator()">➕ Объект</button>
+			<button onclick="moveNpcHere()">👤 Переместить NPC</button>
+		</div>
+		
+        <h3>Объекты в локации</h3>
+        <ul id="location-objects" class="compact-list"></ul>
+        <h3>Предметы на полу</h3>
+        <ul id="location-items" class="compact-list"></ul>
+        <h3>Выходы</h3>
+        <ul id="location-exits" class="compact-list"></ul>
+      </section>
+      <section class="chat-section">
+        <div id="chat-log">Добро пожаловать в CitySim!</div>
+        <div class="chat-input">
+          <input type="text" id="player-input" placeholder="Напишите сообщение..." />
+          <button id="send-btn">➤</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="right-panel">
+      <section class="player-card">
+        <h3>Игрок: <span id="player-name">Загрузка...</span></h3>
+        <div class="appearance-placeholder">Загрузка внешности...</div>
+        <div class="stats">
+          <p>Здоровье: <span id="player-health">--</span></p>
+          <p>Энергия: <span id="player-energy2">--</span></p>
+          <p>Стресс: <span id="player-stress2">--</span></p>
+          <p>Социальный: <span id="player-social">--</span></p>
+        </div>
+      </section>
+
+      <section class="smartphone">
+        <h3>📱 Смартфон</h3>
+        <div class="apps">
+		  <button class="app-btn" onclick="openApp('inventory')">🎒 Инвентарь</button>
+          <button class="app-btn" onclick="openApp('editor')">🛠️ Редактор мира</button>
+          <button class="app-btn" onclick="openApp('search')">🔍 Поиск</button>
+          <button class="app-btn" onclick="openApp('world')">🌍 Мир</button>
+          <button class="app-btn" disabled>💬 Telegram</button>
+		  <button id="dev-toggle" class="tool-btn" onclick="toggleDevMode()">🛠️ Dev Mode</button>
+        </div>
+      </section>
+
+      <section class="npcs-in-location">
+        <h3>NPC в локации</h3>
+        <ul id="npc-list-right" class="compact-list"><li>Загрузка...</li></ul>
+      </section>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНЫЕ ОКНА -->
+  <div id="modal-editor" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeApp('editor')">&times;</span>
+      <h3>🛠️ Редактор мира</h3>
+      <button class="tool-btn" onclick="openCreateModal('character')">➕ Персонаж</button>
+      <button class="tool-btn" onclick="openCreateModal('location')">➕ Локация</button>
+      <button class="tool-btn" onclick="openCreateModal('item')">➕ Предмет</button>
+	  <button class="tool-btn" onclick="openCreateModal('object')">➕ Объект</button>
+	  <button class="tool-btn" onclick="openCreateModal('item_template')">➕ Шаблон предмета</button>
+	  <button class="tool-btn" onclick="openCreateModal('object_template')">➕ Шаблон объекта</button>
+	  <button class="tool-btn" onclick="openCreateModal('character_template')">➕ Шаблон персонажа</button>
+	  <button class="tool-btn" onclick="openCreateModal('location_template')">➕ Шаблон локации</button>
+    </div>
+  </div>
+
+  <div id="modal-search" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeApp('search')">&times;</span>
+      <h3>🔍 Поиск</h3>
+      <input type="text" id="search-query" placeholder="ID или имя">
+      <button onclick="performSearch()">Найти</button>
+      <div id="search-results"></div>
+    </div>
+  </div>
+
+  <div id="modal-world" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeApp('world')">&times;</span>
+      <h3>🌍 Глобальное состояние мира</h3>
+      <form id="world-form">
+        <label>Дата и время: <input type="text" id="w_timestamp" placeholder="2025-10-26T08:00:00"></label>
+        <label>Погода:
+          <select id="w_weather">
+            <option value="ясно">Ясно</option>
+            <option value="пасмурно">Пасмурно</option>
+            <option value="дождь">Дождь</option>
+            <option value="снег">Снег</option>
+          </select>
+        </label>
+        <label>Температура: <input type="number" id="w_temperature" step="0.5" value="12"></label>
+        <label>Сезон:
+          <select id="w_season">
+            <option value="весна">Весна</option>
+            <option value="лето">Лето</option>
+            <option value="осень">Осень</option>
+            <option value="зима">Зима</option>
+          </select>
+        </label>
+        <label>День недели:
+          <select id="w_day">
+            <option value="понедельник">Понедельник</option>
+            <option value="вторник">Вторник</option>
+            <option value="среда">Среда</option>
+            <option value="четверг">Четверг</option>
+            <option value="пятница">Пятница</option>
+            <option value="суббота">Суббота</option>
+            <option value="воскресенье">Воскресенье</option>
+          </select>
+        </label>
+        <button type="button" onclick="saveWorldState()">Сохранить мир</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Создание -->
+<div id="modal-create" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal('create')">&times;</span>
+    <h3 id="create-title">Создать сущность</h3>
+    <select id="create-type" onchange="buildCreateForm(this.value)">
+  <!-- Реальные сущности -->
+  <option value="character">➕ Персонаж</option>
+  <option value="location">➕ Локация</option>
+  <option value="item">➕ Предмет</option>
+  <option value="object">➕ Объект</option>
+  <!-- Шаблоны -->
+  <option value="character_template">📄 Шаблон персонажа</option>
+  <option value="location_template">📄 Шаблон локации</option>
+  <option value="item_template">📄 Шаблон предмета</option>
+  <option value="object_template">📄 Шаблон объекта</option>
+</select>
+    <form id="create-form-container"></form> <!-- ← ИЗМЕНЕНО: уникальный ID -->
+    <button onclick="submitCreateForm()">Создать</button>
+  </div>
+</div>
+
+<!-- Редактирование -->
+<div id="modal-edit" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal('edit')">&times;</span>
+    <h3>Редактировать <span id="edit-id-display"></span></h3>
+    <form id="edit-form-container"></form> <!-- ← ИЗМЕНЕНО: уникальный ID -->
+    <div class="edit-actions">
+      <button onclick="submitEditForm()">Сохранить</button>
+      <button class="btn-danger" onclick="deleteEntity()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Инвентарь -->
+<div id="modal-inventory" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeApp('inventory')">&times;</span>
+    <h3>🎒 Инвентарь игрока</h3>
+    <div id="inventory-list"></div>
+  </div>
+</div>
+
+  <!-- JS -->
+  <script src="js/core.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/location.js"></script>
+  <script src="js/npcs.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/smartphone.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/inventory.js"></script>
+
+  <script>
+  window.addEventListener('load', async () => {
+    console.log('CitySim загружен. Ожидание данных игрока...');
+    // Ждём, пока загрузится позиция игрока
+    while (!window.CitySimReady) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.log('Инициализация интерфейса...');
+    if (typeof renderWorldState === 'function') renderWorldState();
+    if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+    if (typeof renderNpcsRight === 'function') renderNpcsRight();
+    if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
+  });
+</script>
+</body>
+</html>
+
+=== static\js\chat.js ===
+// chat.js — чат с ИИ
+
+// Отправка сообщения игроком
+async function sendChatMessage() {
+  const inputEl = document.getElementById('player-input');
+  const message = inputEl?.value.trim();
+  if (!message || !currentNpcId) {
+    alert('Выберите NPC и введите сообщение.');
+    return;
+  }
+
+  const chatLog = document.getElementById('chat-log');
+  if (!chatLog) return;
+
+  // Отображаем сообщение игрока
+  chatLog.textContent += `\nИгрок: ${message}`;
+  inputEl.value = '';
+  chatLog.scrollTop = chatLog.scrollHeight;
+
+  // Отправляем запрос к ИИ
+  try {
+    const res = await fetch('/npc/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ npc_id: currentNpcId, player_message: message })
+    });
+
+    const data = await res.json();
+    const aiResponse = data.dialogue || '...';
+
+    // Отображаем ответ ИИ
+    chatLog.textContent += `\n${aiResponse}\n`;
+  } catch (e) {
+    chatLog.textContent += `\n[Ошибка чата: ${e.message}]\n`;
+  }
+
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+// Инициализация обработчиков
+document.addEventListener('DOMContentLoaded', () => {
+  const sendBtn = document.getElementById('send-btn');
+  const inputEl = document.getElementById('player-input');
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', sendChatMessage);
+  }
+
+  if (inputEl) {
+    inputEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendChatMessage();
+    });
+  }
+});
+
+=== static\js\core.js ===
+// core.js — исправленная инициализация с ожиданием позиции игрока
+
+// Глобальные переменные (инициализируются позже)
+window.currentLocationId = null;
+window.currentNpcId = null;
+
+// Флаг: готова ли система к работе
+window.CitySimReady = false;
+
+// Загрузка последней позиции игрока
+async function loadPlayerLocation() {
+  try {
+    const res = await fetch('/player');
+    if (res.ok) {
+      const player = await res.json();
+      window.currentLocationId = player.location_id;
+    } else {
+      console.warn('Игрок не найден, старт в вестибюле');
+      window.currentLocationId = 'loc_vestibule';
+    }
+  } catch (e) {
+    console.warn('Ошибка загрузки игрока:', e);
+    window.currentLocationId = 'loc_vestibule';
+  }
+  window.CitySimReady = true;
+}
+
+// Безопасный fetch
+async function safeFetch(url, errorMsg = 'Ошибка запроса') {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`${errorMsg}: ${res.status}`);
+      return null;
+    }
+    return await res.json();
+  } catch (e) {
+    console.error(`${errorMsg}:`, e);
+    return null;
+  }
+}
+
+// Безопасный POST
+async function safePost(url, data, successMsg = 'Успешно') {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (res.ok) {
+      alert(successMsg);
+      return await res.json();
+    } else {
+      const err = await res.json();
+      alert(`Ошибка: ${JSON.stringify(err.detail)}`);
+      return null;
+    }
+  } catch (e) {
+    alert(`Ошибка: ${e.message}`);
+    return null;
+  }
+}
+
+// Запуск инициализации
+loadPlayerLocation();
+
+window.devMode = false;
+
+function toggleDevMode() {
+  window.devMode = !window.devMode;
+  document.body.classList.toggle('dev-mode', window.devMode);
+  const btn = document.getElementById('dev-toggle');
+  btn.textContent = window.devMode ? '🛠️ Dev Mode (ON)' : '🛠️ Dev Mode';
+}
+
+// Глобальный объект для хранения шаблонов
+window.templates = {
+  items: [],
+  objects: [],
+  characters: []
+};
+
+async function loadTemplates() {
+  window.templates.items = await safeFetch('/item_templates') || [];
+  window.templates.objects = await safeFetch('/object_templates') || [];
+  window.templates.characters = await safeFetch('/character_templates') || [];
+}
+
+// Загрузим шаблоны при старте
+loadTemplates();
+
+function applyTemplate(type) {
+  const select = document.getElementById(`${type}_template_select`);
+  const tplId = select.value;
+  if (!tplId) return;
+
+  let url = '';
+  if (type === 'item') url = `/item_template/${tplId}`;
+  // ... аналогично для object и character
+
+  fetch(url)
+    .then(r => r.json())
+    .then(tpl => {
+      // Применяем поля шаблона к форме
+      if (type === 'item') {
+        document.getElementById('i_name').value = tpl.name;
+        document.getElementById('i_type').value = tpl.item_type;
+        document.getElementById('i_description').value = tpl.description || '';
+        document.getElementById('i_layer').value = tpl.layer || 0;
+        document.getElementById('i_is_dirty').checked = tpl.is_dirty || false;
+      }
+      // ... аналогично для object и character
+    })
+    .catch(e => alert('Ошибка загрузки шаблона: ' + e.message));
+}
+
+async function loadPlayerLocation() {
+  try {
+    const res = await fetch('/player');
+    if (res.ok) {
+      const player = await res.json();
+      window.currentLocationId = player.location_id;
+    } else {
+      // Создаём игрока, если нет
+      const createRes = await fetch('/character', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: "Игрок",
+          surname: "Главный",
+          age: 17,
+          gender: "мужской",
+          role: "player",
+          location_id: "loc_vestibule"
+        })
+      });
+      if (createRes.ok) {
+        const newPlayer = await createRes.json();
+        window.currentLocationId = newPlayer.location_id;
+      } else {
+        window.currentLocationId = 'loc_vestibule';
+      }
+    }
+  } catch (e) {
+    console.warn('Ошибка загрузки/создания игрока:', e);
+    window.currentLocationId = 'loc_vestibule';
+  }
+  window.CitySimReady = true;
+}
+
+=== static\js\editor.js ===
+// editor.js — единый редактор для всех сущностей
+
+// === ОТКРЫТИЕ МОДАЛЬНЫХ ОКОН ===
+
+function openCreateModal(type) {
+  document.getElementById('create-type').value = type;
+  buildCreateForm(type, null);
+  document.getElementById('modal-create').style.display = 'block';
+}
+
+function openEditModal(id) {
+  if (!id) return;
+  if (id.startsWith('pers_')) {
+    fetch(`/character/${id}`).then(r => r.json()).then(data => {
+      buildCreateForm('character', data);
+      document.getElementById('edit-id-display').textContent = id;
+      document.getElementById('modal-edit').style.display = 'block';
+    }).catch(e => alert('Ошибка загрузки персонажа: ' + e.message));
+  } else if (id.startsWith('loc_')) {
+    fetch(`/location/${id}`).then(r => r.json()).then(data => {
+      buildCreateForm('location', data);
+      document.getElementById('edit-id-display').textContent = id;
+      document.getElementById('modal-edit').style.display = 'block';
+    }).catch(e => alert('Ошибка загрузки локации: ' + e.message));
+  } else if (id.startsWith('it_')) {
+    fetch(`/item/${id}`).then(r => r.json()).then(data => {
+      buildCreateForm('item', data);
+      document.getElementById('edit-id-display').textContent = id;
+      document.getElementById('modal-edit').style.display = 'block';
+    }).catch(e => alert('Ошибка загрузки предмета: ' + e.message));
+  } else if (id.startsWith('obj_')) {
+    fetch(`/object/${id}`).then(r => r.json()).then(data => {
+      buildCreateForm('object', data);
+      document.getElementById('edit-id-display').textContent = id;
+      document.getElementById('modal-edit').style.display = 'block';
+    }).catch(e => alert('Ошибка загрузки объекта: ' + e.message));
+  }
+}
+
+// === ПОСТРОЕНИЕ ФОРМЫ ===
+
+function buildCreateForm(type, data = null) {
+  const createForm = document.getElementById('create-form-container');
+  const editForm = document.getElementById('edit-form');
+  const targetForm = editForm || createForm;
+  if (!targetForm) return;
+
+  let html = '';
+
+  if (type === 'character') {
+    const name = data?.name || '';
+    const surname = data?.surname || '';
+    const patronymic = data?.patronymic || '';
+    const age = data?.age || 16;
+    const gender = data?.gender || 'женский';
+    const role = data?.role || 'npc';
+    const location_id = data?.location_id || window.currentLocationId;
+    const occupation = data?.occupation || '';
+    const personality = data?.personality || '';
+    html = `
+      ${data ? `<input type="hidden" id="edit-id" value="${data.id}">` : ''}
+      <label>Имя: <input type="text" id="c_name" value="${name}" required></label>
+      <label>Фамилия: <input type="text" id="c_surname" value="${surname}" required></label>
+      <label>Отчество: <input type="text" id="c_patronymic" value="${patronymic}"></label>
+      <label>Возраст: <input type="number" id="c_age" value="${age}" min="0" max="120" required></label>
+      <label>Пол:
+        <select id="c_gender" required>
+          <option value="мужской" ${gender === 'мужской' ? 'selected' : ''}>Мужской</option>
+          <option value="женский" ${gender === 'женский' ? 'selected' : ''}>Женский</option>
+        </select>
+      </label>
+      <label>Роль:
+        <select id="c_role" required>
+          <option value="npc" ${role === 'npc' ? 'selected' : ''}>NPC</option>
+          <option value="player" ${role === 'player' ? 'selected' : ''}>Игрок</option>
+        </select>
+      </label>
+      <label>ID локации: <input type="text" id="c_location_id" value="${location_id}" placeholder="loc_..." required></label>
+      <label>Профессия: <input type="text" id="c_occupation" value="${occupation}"></label>
+      <label>Личность: <textarea id="c_personality" rows="3">${personality}</textarea></label>
+    `;
+  } else if (type === 'location') {
+    const name = data?.name || '';
+    const typeVal = data?.type || 'classroom';
+    const parent_id = data?.parent_id || '';
+    const address = data?.address || '';
+    const owner_id = data?.owner_id || '';
+    const description = data?.description || '';
+    const is_always_open = data?.is_always_open || false;
+    const lock_type = data?.lock_type || 1;
+    html = `
+      ${data ? `<input type="hidden" id="edit-id" value="${data.id}">` : ''}
+      <label>Название: <input type="text" id="l_name" value="${name}" required></label>
+      <label>Тип: <input type="text" id="l_type" value="${typeVal}" required></label>
+      <label>Родитель (ID): <input type="text" id="l_parent_id" value="${parent_id}" placeholder="loc_..."></label>
+      <label>Адрес: <input type="text" id="l_address" value="${address}"></label>
+      <label>Владелец (ID): <input type="text" id="l_owner_id" value="${owner_id}" placeholder="pers_... или loc_..."></label>
+      <label>Описание:
+        <textarea id="l_description" rows="6" style="width:100%;font-family:monospace;"
+          placeholder="Подробное описание локации...">${description}</textarea>
+      </label>
+      <label><input type="checkbox" id="l_is_always_open" ${is_always_open ? 'checked' : ''}> Всегда открыто</label>
+      <label>Тип замка:
+        <select id="l_lock_type">
+          <option value="1" ${lock_type == 1 ? 'selected' : ''}>Без замка</option>
+          <option value="2" ${lock_type == 2 ? 'selected' : ''}>Ключ с обеих сторон</option>
+          <option value="3" ${lock_type == 3 ? 'selected' : ''}>Ключ снаружи</option>
+          <option value="4" ${lock_type == 4 ? 'selected' : ''}>Только изнутри</option>
+        </select>
+      </label>
+    `;
+  } else if (type === 'item') {
+    const name = data?.name || '';
+    const item_type = data?.item_type || 'clothing';
+    const description = data?.description || '';
+    const layer = data?.layer || 0;
+    const is_dirty = data?.is_dirty || false;
+    const quantity = data?._quantity || 1;
+    html = `
+      ${data ? `<input type="hidden" id="edit-id" value="${data.id}">` : ''}
+      <label>Количество: <input type="number" id="i_quantity" value="${quantity}" min="1" max="100"></label>
+      <button type="button" onclick="copyExistingItem()">📋 Скопировать существующий предмет</button>
+      <hr>
+      <label>Название: <input type="text" id="i_name" value="${name}" required></label>
+      <label>Тип: <input type="text" id="i_type" value="${item_type}" required></label>
+      <label>Описание: <textarea id="i_description" rows="4">${description}</textarea></label>
+      <label>Слой одежды (0–5): <input type="number" id="i_layer" value="${layer}" min="0" max="5"></label>
+      <label><input type="checkbox" id="i_is_dirty" ${is_dirty ? 'checked' : ''}> Грязный</label>
+      <hr>
+      <label>Создать из шаблона:
+        <select id="i_template_select">
+          <option value="">— выберите шаблон —</option>
+          ${window.templates.items.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+        </select>
+      </label>
+      <button type="button" onclick="applyTemplate('item')">Применить шаблон</button>
+    `;
+  } else if (type === 'object') {
+    const name = data?.name || '';
+    const object_type = data?.object_type || 'desk';
+    const description = data?.description || '';
+    const is_interactable = data?.is_interactable !== false;
+    const is_container = data?.is_container || false;
+    const quantity = data?._quantity || 1;
+    html = `
+      ${data ? `<input type="hidden" id="edit-id" value="${data.id}">` : ''}
+      <label>Количество: <input type="number" id="o_quantity" value="${quantity}" min="1" max="100"></label>
+      <button type="button" onclick="copyExistingObject()">📋 Скопировать существующий объект</button>
+      <hr>
+      <label>Название: <input type="text" id="o_name" value="${name}" required></label>
+      <label>Тип: <input type="text" id="o_type" value="${object_type}" required></label>
+      <label>Описание: <textarea id="o_description" rows="4">${description}</textarea></label>
+      <label><input type="checkbox" id="o_interactable" ${is_interactable ? 'checked' : ''}> Интерактивный</label>
+      <label><input type="checkbox" id="o_container" ${is_container ? 'checked' : ''}> Контейнер</label>
+      <hr>
+      <label>Создать из шаблона:
+        <select id="o_template_select">
+          <option value="">— выберите шаблон —</option>
+          ${window.templates.objects.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+        </select>
+      </label>
+      <button type="button" onclick="applyTemplate('object')">Применить шаблон</button>
+    `;
+  } else if (type === 'character_template') {
+    const name = data?.name || '';
+    const surname = data?.surname || '';
+    const patronymic = data?.patronymic || '';
+    const age = data?.age || 16;
+    const gender = data?.gender || 'женский';
+    const role = data?.role || 'npc';
+    const occupation = data?.occupation || '';
+    const personality = data?.personality || '';
+    html = `
+      <label>Имя: <input type="text" id="c_name" value="${name}" required></label>
+      <label>Фамилия: <input type="text" id="c_surname" value="${surname}" required></label>
+      <label>Отчество: <input type="text" id="c_patronymic" value="${patronymic}"></label>
+      <label>Возраст: <input type="number" id="c_age" value="${age}" min="0" max="120" required></label>
+      <label>Пол:
+        <select id="c_gender" required>
+          <option value="мужской" ${gender === 'мужской' ? 'selected' : ''}>Мужской</option>
+          <option value="женский" ${gender === 'женский' ? 'selected' : ''}>Женский</option>
+        </select>
+      </label>
+      <label>Роль:
+        <select id="c_role" required>
+          <option value="npc" ${role === 'npc' ? 'selected' : ''}>NPC</option>
+          <option value="player" ${role === 'player' ? 'selected' : ''}>Игрок</option>
+        </select>
+      </label>
+      <label>Профессия: <input type="text" id="c_occupation" value="${occupation}"></label>
+      <label>Личность: <textarea id="c_personality" rows="3">${personality}</textarea></label>
+    `;
+  } else if (type === 'location_template') {
+    const name = data?.name || '';
+    const typeVal = data?.type || 'classroom';
+    const parent_id = data?.parent_id || '';
+    const address = data?.address || '';
+    const owner_id = data?.owner_id || '';
+    const description = data?.description || '';
+    const is_always_open = data?.is_always_open || false;
+    const lock_type = data?.lock_type || 1;
+    html = `
+      <label>Название: <input type="text" id="l_name" value="${name}" required></label>
+      <label>Тип: <input type="text" id="l_type" value="${typeVal}" required></label>
+      <label>Родитель (ID): <input type="text" id="l_parent_id" value="${parent_id}" placeholder="loc_..."></label>
+      <label>Адрес: <input type="text" id="l_address" value="${address}"></label>
+      <label>Владелец (ID): <input type="text" id="l_owner_id" value="${owner_id}" placeholder="pers_... или loc_..."></label>
+      <label>Описание:
+        <textarea id="l_description" rows="6" style="width:100%;font-family:monospace;"
+          placeholder="Подробное описание локации...">${description}</textarea>
+      </label>
+      <label><input type="checkbox" id="l_is_always_open" ${is_always_open ? 'checked' : ''}> Всегда открыто</label>
+      <label>Тип замка:
+        <select id="l_lock_type">
+          <option value="1" ${lock_type == 1 ? 'selected' : ''}>Без замка</option>
+          <option value="2" ${lock_type == 2 ? 'selected' : ''}>Ключ с обеих сторон</option>
+          <option value="3" ${lock_type == 3 ? 'selected' : ''}>Ключ снаружи</option>
+          <option value="4" ${lock_type == 4 ? 'selected' : ''}>Только изнутри</option>
+        </select>
+      </label>
+    `;
+  } else if (type === 'item_template') {
+    const name = data?.name || '';
+    const item_type = data?.item_type || 'clothing';
+    const description = data?.description || '';
+    const layer = data?.layer || 0;
+    const is_dirty = data?.is_dirty || false;
+    html = `
+      <label>Название: <input type="text" id="i_name" value="${name}" required></label>
+      <label>Тип: <input type="text" id="i_type" value="${item_type}" required></label>
+      <label>Описание: <textarea id="i_description" rows="4">${description}</textarea></label>
+      <label>Слой одежды (0–5): <input type="number" id="i_layer" value="${layer}" min="0" max="5"></label>
+      <label><input type="checkbox" id="i_is_dirty" ${is_dirty ? 'checked' : ''}> Грязный</label>
+    `;
+  } else if (type === 'object_template') {
+    const name = data?.name || '';
+    const object_type = data?.object_type || 'desk';
+    const description = data?.description || '';
+    const is_interactable = data?.is_interactable !== false;
+    const is_container = data?.is_container || false;
+    html = `
+      <label>Название: <input type="text" id="o_name" value="${name}" required></label>
+      <label>Тип: <input type="text" id="o_type" value="${object_type}" required></label>
+      <label>Описание: <textarea id="o_description" rows="4">${description}</textarea></label>
+      <label><input type="checkbox" id="o_interactable" ${is_interactable ? 'checked' : ''}> Интерактивный</label>
+      <label><input type="checkbox" id="o_container" ${is_container ? 'checked' : ''}> Контейнер</label>
+    `;
+  }
+
+  targetForm.innerHTML = html;
+}
+
+// === ОТПРАВКА ФОРМ ===
+
+async function submitCreateForm() {
+  const type = document.getElementById('create-type')?.value;
+  if (!type) return;
+
+  let url = '';
+  let baseData = null;
+
+  if (type === 'character') {
+    const name = document.getElementById('c_name')?.value.trim();
+    const surname = document.getElementById('c_surname')?.value.trim();
+    if (!name || !surname) { alert('Имя и фамилия обязательны'); return; }
+    baseData = {
+      name,
+      surname,
+      patronymic: document.getElementById('c_patronymic')?.value.trim() || null,
+      age: parseInt(document.getElementById('c_age')?.value) || 16,
+      gender: document.getElementById('c_gender')?.value || 'женский',
+      role: document.getElementById('c_role')?.value || 'npc',
+      location_id: document.getElementById('c_location_id')?.value.trim() || window.currentLocationId,
+      occupation: document.getElementById('c_occupation')?.value.trim() || null,
+      personality: document.getElementById('c_personality')?.value.trim() || null
+    };
+    url = '/character';
+  } else if (type === 'location') {
+    const name = document.getElementById('l_name')?.value.trim();
+    if (!name) { alert('Название обязательно'); return; }
+    baseData = {
+      name,
+      type: document.getElementById('l_type')?.value.trim() || 'room',
+      parent_id: document.getElementById('l_parent_id')?.value.trim() || null,
+      address: document.getElementById('l_address')?.value.trim() || null,
+      owner_id: document.getElementById('l_owner_id')?.value.trim() || null,
+      description: document.getElementById('l_description')?.value.trim() || null,
+      is_always_open: document.getElementById('l_is_always_open')?.checked || false,
+      lock_type: parseInt(document.getElementById('l_lock_type')?.value) || 1
+    };
+    url = '/location';
+  } else if (type === 'item') {
+    const name = document.getElementById('i_name')?.value.trim();
+    const item_type = document.getElementById('i_type')?.value.trim();
+    if (!name) { alert('Название обязательно'); return; }
+    baseData = {
+      name,
+      item_type,
+      description: document.getElementById('i_description')?.value.trim() || null,
+      layer: parseInt(document.getElementById('i_layer')?.value) || 0,
+      is_dirty: document.getElementById('i_is_dirty')?.checked || false
+    };
+    const quantity = parseInt(document.getElementById('i_quantity')?.value) || 1;
+    for (let i = 0; i < quantity; i++) {
+      const res = await fetch('/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseData)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Ошибка при создании предмета #${i+1}: ${JSON.stringify(err.detail)}`);
+        return;
+      }
+    }
+    alert(`Создано ${quantity} предмет(ов)`);
+    closeModal('create');
+    if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+    if (typeof renderNpcsRight === 'function') renderNpcsRight();
+    if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
+    return;
+  } else if (type === 'object') {
+    const name = document.getElementById('o_name')?.value.trim();
+    const object_type = document.getElementById('o_type')?.value.trim();
+    if (!name) { alert('Название обязательно'); return; }
+    baseData = {
+      name,
+      object_type,
+      description: document.getElementById('o_description')?.value.trim() || null,
+      is_interactable: document.getElementById('o_interactable')?.checked || false,
+      is_container: document.getElementById('o_container')?.checked || false
+    };
+    const quantity = parseInt(document.getElementById('o_quantity')?.value) || 1;
+    for (let i = 0; i < quantity; i++) {
+      const res = await fetch('/object', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseData)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Ошибка при создании объекта #${i+1}: ${JSON.stringify(err.detail)}`);
+        return;
+      }
+    }
+    alert(`Создано ${quantity} объект(ов)`);
+    closeModal('create');
+    if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+    return;
+  } else if (type === 'character_template') {
+    const name = document.getElementById('c_name')?.value.trim();
+    const surname = document.getElementById('c_surname')?.value.trim();
+    if (!name || !surname) { alert('Имя и фамилия обязательны'); return; }
+    baseData = {
+      name,
+      surname,
+      patronymic: document.getElementById('c_patronymic')?.value.trim() || null,
+      age: parseInt(document.getElementById('c_age')?.value) || 16,
+      gender: document.getElementById('c_gender')?.value || 'женский',
+      role: document.getElementById('c_role')?.value || 'npc',
+      occupation: document.getElementById('c_occupation')?.value.trim() || null,
+      personality: document.getElementById('c_personality')?.value.trim() || null
+    };
+    url = '/character_template';
+  } else if (type === 'location_template') {
+    const name = document.getElementById('l_name')?.value.trim();
+    if (!name) { alert('Название обязательно'); return; }
+    baseData = {
+      name,
+      type: document.getElementById('l_type')?.value.trim() || 'room',
+      parent_id: document.getElementById('l_parent_id')?.value.trim() || null,
+      address: document.getElementById('l_address')?.value.trim() || null,
+      owner_id: document.getElementById('l_owner_id')?.value.trim() || null,
+      description: document.getElementById('l_description')?.value.trim() || null,
+      is_always_open: document.getElementById('l_is_always_open')?.checked || false,
+      lock_type: parseInt(document.getElementById('l_lock_type')?.value) || 1
+    };
+    url = '/location_template';
+  } else if (type === 'item_template') {
+    const name = document.getElementById('i_name')?.value.trim();
+    if (!name) { alert('Название обязательно'); return; }
+    baseData = {
+      name,
+      item_type: document.getElementById('i_type')?.value.trim() || 'item',
+      description: document.getElementById('i_description')?.value.trim() || null,
+      layer: parseInt(document.getElementById('i_layer')?.value) || 0,
+      is_dirty: document.getElementById('i_is_dirty')?.checked || false
+    };
+    url = '/item_template';
+  } else if (type === 'object_template') {
+    const name = document.getElementById('o_name')?.value.trim();
+    if (!name) { alert('Название обязательно'); return; }
+    baseData = {
+      name,
+      object_type: document.getElementById('o_type')?.value.trim() || 'object',
+      description: document.getElementById('o_description')?.value.trim() || null,
+      is_interactable: document.getElementById('o_interactable')?.checked || false,
+      is_container: document.getElementById('o_container')?.checked || false
+    };
+    url = '/object_template';
+  }
+
+  if (baseData && url) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(baseData)
+    });
+    if (res.ok) {
+      alert('Создано!');
+      closeModal('create');
+      if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+      if (typeof renderNpcsRight === 'function') renderNpcsRight();
+      if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
+    } else {
+      const err = await res.json();
+      alert('Ошибка: ' + JSON.stringify(err.detail));
+    }
+  }
+}
+
+async function submitEditForm() {
+  const id = document.getElementById('edit-id')?.value;
+  if (!id) return;
+  let url = '';
+  let formData = null;
+  if (id.startsWith('pers_')) {
+    formData = {
+      name: document.getElementById('c_name').value.trim(),
+      surname: document.getElementById('c_surname').value.trim(),
+      patronymic: document.getElementById('c_patronymic').value.trim() || null,
+      age: parseInt(document.getElementById('c_age').value),
+      gender: document.getElementById('c_gender').value,
+      role: document.getElementById('c_role').value,
+      location_id: document.getElementById('c_location_id').value.trim(),
+      occupation: document.getElementById('c_occupation').value.trim() || null,
+      personality: document.getElementById('c_personality').value.trim() || null
+    };
+    url = `/character/${id}`;
+  } else if (id.startsWith('loc_')) {
+    formData = {
+      name: document.getElementById('l_name').value.trim(),
+      type: document.getElementById('l_type').value.trim(),
+      parent_id: document.getElementById('l_parent_id').value.trim() || null,
+      address: document.getElementById('l_address').value.trim() || null,
+      owner_id: document.getElementById('l_owner_id').value.trim() || null,
+      description: document.getElementById('l_description').value.trim() || null,
+      is_always_open: document.getElementById('l_is_always_open').checked,
+      lock_type: parseInt(document.getElementById('l_lock_type').value)
+    };
+    url = `/location/${id}`;
+  } else if (id.startsWith('it_')) {
+    formData = {
+      name: document.getElementById('i_name').value.trim(),
+      item_type: document.getElementById('i_type').value.trim(),
+      description: document.getElementById('i_description').value.trim() || null,
+      layer: parseInt(document.getElementById('i_layer').value) || 0,
+      is_dirty: document.getElementById('i_is_dirty').checked || false
+    };
+    url = `/item/${id}`;
+  } else if (id.startsWith('obj_')) {
+    formData = {
+      name: document.getElementById('o_name').value.trim(),
+      object_type: document.getElementById('o_type').value.trim(),
+      description: document.getElementById('o_description').value.trim() || null,
+      is_interactable: document.getElementById('o_interactable').checked || false,
+      is_container: document.getElementById('o_container').checked || false
+    };
+    url = `/object/${id}`;
+  }
+  if (formData && url) {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+    if (res.ok) {
+      alert('Изменения сохранены!');
+      closeModal('edit');
+      if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+      if (typeof renderNpcsRight === 'function') renderNpcsRight();
+      if (typeof renderPlayerStatus === 'function') renderPlayerStatus();
+    } else {
+      const err = await res.json();
+      alert('Ошибка: ' + JSON.stringify(err.detail));
+    }
+  }
+}
+
+async function deleteEntity() {
+  if (!confirm('Вы уверены, что хотите удалить?')) return;
+  const id = document.getElementById('edit-id-display')?.textContent;
+  if (!id) return;
+  let url = '';
+  if (id.startsWith('pers_')) url = `/character/${id}`;
+  else if (id.startsWith('loc_')) url = `/location/${id}`;
+  else if (id.startsWith('it_')) url = `/item/${id}`;
+  else if (id.startsWith('obj_')) url = `/object/${id}`;
+  else return;
+  const res = await fetch(url, { method: 'DELETE' });
+  if (res.ok) {
+    alert('Удалено!');
+    closeModal('edit');
+    if (typeof loadLocationAndExits === 'function') loadLocationAndExits();
+    if (typeof renderNpcsRight === 'function') renderNpcsRight();
+  } else {
+    const err = await res.json();
+    alert('Ошибка: ' + JSON.stringify(err.detail));
+  }
+}
+
+function closeModal(modalName) {
+  document.getElementById(`modal-${modalName}`).style.display = 'none';
+}
+
+// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+
+async function copyExistingItem() {
+  const items = await safeFetch('/items') || [];
+  if (!items.length) {
+    alert('Нет предметов для копирования');
+    return;
+  }
+  const options = items.map(i => 
+    `<option value="${i.id}">${i.name} (${i.id}) — ${i.item_type}</option>`
+  ).join('');
+  const modalHtml = `
+    <div id="copy-item-modal" class="modal" style="display:block;">
+      <div class="modal-content">
+        <span class="close" onclick="document.getElementById('copy-item-modal').remove()">&times;</span>
+        <h3>📋 Выберите предмет для копирования</h3>
+        <select id="copy-item-select" style="width:100%;margin:10px 0;">
+          ${options}
+        </select>
+        <button onclick="applyCopiedItem()">Применить</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function applyCopiedItem() {
+  const id = document.getElementById('copy-item-select').value;
+  if (!id) return;
+  fetch(`/item/${id}`)
+    .then(r => r.json())
+    .then(item => {
+      delete item.id;
+      delete item.current_location_id;
+      delete item.current_object_id;
+      delete item.current_holder_id;
+      delete item.worn_by_id;
+      delete item.dropped_by;
+      item._quantity = 1;
+      buildCreateForm('item', item);
+      document.getElementById('copy-item-modal').remove();
+    })
+    .catch(e => alert('Ошибка загрузки: ' + e.message));
+}
+
+async function copyExistingObject() {
+  const objects = await safeFetch('/objects') || [];
+  if (!objects.length) return alert('Нет объектов');
+  const options = objects.map(o => `<option value="${o.id}">${o.name} (${o.id})</option>`).join('');
+  const modal = `
+    <div id="copy-obj-modal" class="modal" style="display:block;">
+      <div class="modal-content">
+        <span class="close" onclick="document.getElementById('copy-obj-modal').remove()">&times;</span>
+        <h3>Выберите объект для копирования</h3>
+        <select id="copy-obj-select">${options}</select>
+        <button onclick="applyCopiedObject()">Применить</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modal);
+}
+
+function applyCopiedObject() {
+  const id = document.getElementById('copy-obj-select').value;
+  if (!id) return;
+  fetch(`/object/${id}`)
+    .then(r => r.json())
+    .then(obj => {
+      delete obj.id;
+      delete obj.location_id;
+      obj._quantity = 1;
+      buildCreateForm('object', obj);
+      document.getElementById('copy-obj-modal').remove();
+    })
+    .catch(e => alert('Ошибка загрузки: ' + e.message));
+}
+
+function applyTemplate(type) {
+  const select = document.getElementById(`${type}_template_select`);
+  const tplId = select.value;
+  if (!tplId) return;
+  fetch(`/item_template/${tplId}`) // временно только для item
+    .then(r => r.json())
+    .then(tpl => {
+      if (type === 'item') {
+        document.getElementById('i_name').value = tpl.name;
+        document.getElementById('i_type').value = tpl.item_type;
+        document.getElementById('i_description').value = tpl.description || '';
+        document.getElementById('i_layer').value = tpl.layer || 0;
+        document.getElementById('i_is_dirty').checked = tpl.is_dirty || false;
+      }
+      // TODO: реализовать для object, character, location
+    })
+    .catch(e => alert('Ошибка загрузки шаблона: ' + e.message));
+}
+
+// === ЭКСПОРТ В ГЛОБАЛЬНУЮ ОБЛАСТЬ ===
+
+window.openCreateModal = openCreateModal;
+window.buildCreateForm = buildCreateForm;
+window.submitCreateForm = submitCreateForm;
+window.openEditModal = openEditModal;
+window.submitEditForm = submitEditForm;
+window.deleteEntity = deleteEntity;
+window.copyExistingItem = copyExistingItem;
+window.applyCopiedItem = applyCopiedItem;
+window.copyExistingObject = copyExistingObject;
+window.applyCopiedObject = applyCopiedObject;
+window.applyTemplate = applyTemplate;
+
+=== static\js\inventory.js ===
+// inventory.js — управление инвентарём в модальном окне
+
+async function fetchPlayerInventory() {
+  const res = await fetch('/player/inventory');
+  if (!res.ok) throw new Error('Ошибка загрузки инвентаря');
+  return await res.json();
+}
+
+async function renderInventory() {
+  const list = document.getElementById('inventory-list');
+  if (!list) {
+    console.warn('Элемент #inventory-list не найден');
+    return;
+  }
+
+  try {
+    const inventory = await fetchPlayerInventory();
+    
+    if (inventory.length === 0) {
+      list.innerHTML = '<p>Инвентарь пуст</p>';
+      return;
+    }
+
+    // Сортируем: сначала надетое (по layer), потом остальное
+    const sorted = [...inventory].sort((a, b) => {
+      const aWorn = a.worn_by_id ? 1 : 0;
+      const bWorn = b.worn_by_id ? 1 : 0;
+      if (aWorn !== bWorn) return bWorn - aWorn; // надетое — выше
+      if (aWorn && bWorn) return (a.layer || 0) - (b.layer || 0); // по слою
+      return 0;
+    });
+
+    let html = '';
+    for (const item of sorted) {
+      const isWorn = item.worn_by_id;
+      const layerInfo = isWorn ? ` (слой ${item.layer})` : '';
+      const dirtyIcon = item.is_dirty ? ' 🧺' : '';
+      const wearBtn = isWorn 
+        ? `<button onclick="wearItem('${item.id}', false)">Снять</button>`
+        : `<button onclick="wearItem('${item.id}', true)">Надеть</button>`;
+      const dropBtn = `<button class="btn-danger" onclick="dropItemOnFloor('${item.id}')">→ На пол</button>`;
+
+      html += `
+        <div style="padding:8px; border-bottom:1px solid #eee; font-size:14px;">
+          <strong>${item.name}</strong>${layerInfo}${dirtyIcon}<br>
+          <em>${item.description || ''}</em><br>
+          ${wearBtn} ${dropBtn}
+        </div>
+      `;
+    }
+
+    list.innerHTML = html;
+  } catch (e) {
+    console.error('Ошибка загрузки инвентаря:', e);
+    list.innerHTML = `<p>Ошибка: ${e.message}</p>`;
+  }
+}
+
+// Надеть/снять одежду
+async function wearItem(itemId, wear) {
+  const res = await fetch(`/item/${itemId}/wear`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wear: wear })
+  });
+  if (res.ok) {
+    renderInventory(); // обновить список
+  } else {
+    alert('Ошибка смены одежды');
+  }
+}
+
+// Выбросить предмет НА ПОЛ текущей локации (не удалять!)
+async function dropItemOnFloor(itemId) {
+  if (!confirm('Выбросить предмет на пол текущей локации?')) return;
+  const res = await fetch(`/item/${itemId}/drop_on_floor`, { method: 'POST' });
+  if (res.ok) {
+    renderInventory();
+  } else {
+    alert('Ошибка выбрасывания');
+  }
+}
+
+// Экспорт для глобального доступа
+window.renderInventory = renderInventory;
+window.wearItem = wearItem;
+window.dropItemOnFloor = dropItemOnFloor;
+
+=== static\js\location.js ===
+// location.js — управление локацией и переходами
+
+window.fetchLocation = fetchLocation;
+window.fetchLocationNeighbors = fetchLocationNeighbors;
+window.renderLocation = renderLocation;
+window.renderExits = renderExits;
+window.loadLocationAndExits = loadLocationAndExits;
+
+async function fetchLocation(locId) {
+  return await safeFetch(`/location/${locId}`, 'Локация');
+}
+
+async function fetchLocationNeighbors(locId) {
+  return await safeFetch(`/location/${locId}/neighbors`, 'Переходы') || [];
+}
+
+async function renderLocation() {
+  const loc = await fetchLocation(window.currentLocationId);
+  const titleEl = document.getElementById('location-title');
+  const descEl = document.getElementById('location-description');
+
+  if (!titleEl || !descEl) {
+    console.warn('Элементы локации не найдены в DOM');
+    return;
+  }
+
+  if (!loc) {
+    titleEl.textContent = 'Ошибка загрузки';
+    descEl.textContent = 'Не удалось получить данные локации.';
+    return;
+  }
+
+  titleEl.textContent = loc.name;
+  descEl.textContent = loc.description || 'Описание отсутствует.';
+
+  // Загружаем объекты
+  const objects = await safeFetch(`/location/${window.currentLocationId}/objects`, 'Объекты') || [];
+  const objList = document.getElementById('location-objects');
+  if (objList) {
+    if (objects.length === 0) {
+      objList.innerHTML = '<li>Нет объектов</li>';
+    } else {
+      objList.innerHTML = objects.map(obj => {
+        const desc = obj.description ? ` — ${obj.description}` : '';
+        return `<li>${obj.name} (${obj.object_type})${desc}</li>`;
+      }).join('');
+    }
+  }
+
+  // Загружаем предметы на полу
+  const items = await safeFetch(`/location/${window.currentLocationId}/items`, 'Предметы') || [];
+  const itemList = document.getElementById('location-items');
+  if (itemList) {
+    if (items.length === 0) {
+      itemList.innerHTML = '<li>Нет предметов</li>';
+    } else {
+      itemList.innerHTML = items.map(item => {
+        const desc = item.description ? ` — ${item.description}` : '';
+        return `<li>${item.name} (${item.item_type})${desc}</li>`;
+      }).join('');
+    }
+  }
+}
+
+async function renderExits() {
+  const exits = await fetchLocationNeighbors(window.currentLocationId);
+  const exitList = document.getElementById('location-exits');
+  if (!exitList) {
+    console.warn('Элемент #location-exits не найден');
+    return;
+  }
+  if (exits.length === 0) {
+    exitList.innerHTML = '<li>Нет доступных выходов</li>';
+    return;
+  }
+  exitList.innerHTML = exits.map(exit => {
+    const connType = exit.connection_type || 'дверь';
+    return `<li data-loc-id="${exit.id}" title="ID: ${exit.id}">
+      → ${exit.name} (${connType})
+    </li>`;
+  }).join('');
+  exitList.querySelectorAll('li').forEach(li => {
+    li.addEventListener('click', async () => {
+      const newLocId = li.getAttribute('data-loc-id');
+      if (!newLocId) return;
+
+      try {
+        // Обновляем позицию игрока через POST с URL-параметром
+        const res = await fetch(`/player/location/${newLocId}`, { method: 'POST' });
+        if (res.ok) {
+          window.currentLocationId = newLocId;
+          await loadLocationAndExits();
+        } else {
+          alert('Не удалось обновить позицию игрока');
+        }
+      } catch (e) {
+        console.error('Ошибка при переходе:', e);
+        alert('Ошибка сети');
+      }
+    });
+  });
+}
+
+async function loadLocationAndExits() {
+  await renderLocation();
+  await renderExits();
+}
+
+async function editLocationField(field) {
+  const loc = await fetchLocation(window.currentLocationId);
+  if (!loc) return;
+
+  const newValue = prompt(`Изменить ${field === 'name' ? 'название' : 'описание'}:`, loc[field] || '');
+  if (newValue === null) return;
+
+  const updateData = { ...loc };
+  updateData[field] = newValue;
+
+  const res = await fetch(`/location/${window.currentLocationId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updateData)
+  });
+
+  if (res.ok) {
+    alert('Обновлено!');
+    renderLocation();
+  } else {
+    alert('Ошибка обновления');
+  }
+}
+
+function openConnectionsEditor() {
+  alert('Редактор переходов — в разработке');
+  // TODO: открыть модальное окно с выбором локаций
+}
+
+function openItemCreator() {
+  openCreateModal('item');
+}
+
+function openObjectCreator() {
+  openCreateModal('object');
+}
+
+function moveNpcHere() {
+  alert('Переместить NPC — в разработке');
+  // TODO: выбрать NPC из списка и обновить его location_id
+}
+
+async function openConnectionsEditor() {
+  const locId = window.currentLocationId;
+  const loc = await fetchLocation(locId);
+  if (!loc) return;
+
+  // Загружаем все локации для выбора
+  const allLocs = await safeFetch('/locations', 'Все локации') || [];
+  const currentConnections = await safeFetch(`/location/${locId}/neighbors`, 'Текущие связи') || [];
+  const connectedIds = new Set(currentConnections.map(c => c.id));
+
+  let optionsHtml = allLocs
+    .filter(l => l.id !== locId)
+    .map(l => {
+      const checked = connectedIds.has(l.id) ? 'checked' : '';
+      return `<label style="display:block;margin:4px 0;"><input type="checkbox" data-target="${l.id}" ${checked}> ${l.name} (${l.id})</label>`;
+    })
+    .join('');
+
+  const modalHtml = `
+    <div id="connections-modal" class="modal" style="display:block;">
+      <div class="modal-content" style="max-width:700px;">
+        <span class="close" onclick="closeConnectionsEditor()">&times;</span>
+        <h3>🔗 Переходы из: ${loc.name}</h3>
+        <p>Отметьте локации, с которыми должна быть связь (двусторонняя):</p>
+        <div style="max-height:400px;overflow-y:auto;border:1px solid #eee;padding:10px;">
+          ${optionsHtml}
+        </div>
+        <button onclick="saveConnections('${locId}')" style="margin-top:12px;">Сохранить переходы</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeConnectionsEditor() {
+  const modal = document.getElementById('connections-modal');
+  if (modal) modal.remove();
+}
+
+async function saveConnections(fromLocId) {
+  const checkboxes = document.querySelectorAll('#connections-modal input[type="checkbox"]');
+  const targetIds = Array.from(checkboxes)
+    .filter(cb => cb.checked)
+    .map(cb => cb.getAttribute('data-target'));
+
+  // Удалим старые связи
+  const connRes = await fetch(`/location/${fromLocId}/neighbors`);
+  const oldConnections = await connRes.json();
+  for (const conn of oldConnections) {
+    // Удаляем обе стороны (если двусторонняя)
+    await fetch(`/location_connection/${fromLocId}/${conn.id}`, { method: 'DELETE' });
+    await fetch(`/location_connection/${conn.id}/${fromLocId}`, { method: 'DELETE' });
+  }
+
+  // Создадим новые
+  for (const toLocId of targetIds) {
+    await fetch('/location_connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from_location_id: fromLocId,
+        to_location_id: toLocId,
+        is_bidirectional: true
+      })
+    });
+  }
+
+  alert('Переходы обновлены!');
+  closeConnectionsEditor();
+  loadLocationAndExits(); // обновить список выходов
+}
+
+async function moveNpcHere() {
+  const npcs = await safeFetch('/characters', 'Все NPC') || [];
+  const currentLoc = window.currentLocationId;
+  const options = npcs
+    .filter(n => n.id.startsWith('pers_') && n.role !== 'player')
+    .map(n => `<option value="${n.id}">${n.name} ${n.surname || ''} (${n.id})</option>`)
+    .join('');
+
+  if (!options) {
+    alert('Нет NPC для перемещения');
+    return;
+  }
+
+  const selectHtml = `
+    <div id="move-npc-modal" class="modal" style="display:block;">
+      <div class="modal-content">
+        <span class="close" onclick="document.getElementById('move-npc-modal').remove()">&times;</span>
+        <h3>👤 Переместить NPC в эту локацию</h3>
+        <select id="npc-to-move" style="width:100%;margin:10px 0;">${options}</select>
+        <button onclick="doMoveNpc('${currentLoc}')">Переместить</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', selectHtml);
+}
+
+async function doMoveNpc(targetLocId) {
+  const npcId = document.getElementById('npc-to-move').value;
+  if (!npcId) return;
+
+  const res = await fetch(`/character/${npcId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ location_id: targetLocId })
+  });
+
+  if (res.ok) {
+    alert('NPC перемещён!');
+    document.getElementById('move-npc-modal').remove();
+    renderNpcsRight();
+  } else {
+    alert('Ошибка перемещения');
+  }
+}
+
+async function moveNpcHere() {
+  const npcs = await safeFetch('/characters') || [];
+  if (!npcs.length) {
+    alert('Нет NPC');
+    return;
+  }
+  const options = npcs
+    .filter(n => n.role !== 'player')
+    .map(n => {
+      const name = `${n.name} ${n.surname || ''}`.trim();
+      return `<option value="${n.id}">${name} (${n.id})</option>`;
+    })
+    .join('');
+
+  const modal = `
+    <div id="move-npc-modal" class="modal" style="display:block;">
+      <div class="modal-content">
+        <span class="close" onclick="document.getElementById('move-npc-modal').remove()">&times;</span>
+        <h3>👤 Переместить NPC в эту локацию</h3>
+        <input type="text" id="npc-search" placeholder="Поиск по имени или ID..." style="width:100%;margin:10px 0;">
+        <select id="npc-select" size="8" style="width:100%;height:200px;">
+          ${options}
+        </select>
+        <button onclick="doMoveNpc('${window.currentLocationId}')" style="margin-top:10px;">Переместить сюда</button>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modal);
+
+  // Фильтрация поиска
+  const search = document.getElementById('npc-search');
+  const select = document.getElementById('npc-select');
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase();
+    for (const opt of select.options) {
+      const text = opt.textContent.toLowerCase();
+      opt.style.display = text.includes(q) ? 'block' : 'none';
+    }
+  });
+}
+
+async function doMoveNpc(targetLocId) {
+  const select = document.getElementById('npc-select');
+  const selected = Array.from(select.selectedOptions)[0];
+  if (!selected) {
+    alert('Выберите NPC');
+    return;
+  }
+  const npcId = selected.value;
+  const res = await fetch(`/character/${npcId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ location_id: targetLocId })
+  });
+  if (res.ok) {
+    alert('NPC перемещён!');
+    document.getElementById('move-npc-modal').remove();
+    renderNpcsRight();
+  } else {
+    alert('Ошибка перемещения');
+  }
+}
+
+=== static\js\npcs.js ===
+// npcs.js — список NPC с поддержкой редактирования
+
+async function fetchNpcsInLocation(locId) {
+  return await safeFetch(`/characters?location_id=${locId}`, 'NPC');
+}
+
+async function renderNpcsRight() {
+  const npcs = await fetchNpcsInLocation(window.currentLocationId);
+  const list = document.getElementById('npc-list-right');
+
+  if (!list) return;
+
+  if (!npcs || npcs.length === 0) {
+    list.innerHTML = '<li>Никого нет</li>';
+    return;
+  }
+
+  list.innerHTML = npcs.map(npc => {
+    const fullName = `${npc.name} ${npc.surname || ''}`.trim();
+    return `<li data-npc-id="${npc.id}" title="ID: ${npc.id}" style="cursor:pointer;" onclick="openEditModal('${npc.id}')">
+      ${fullName} (${npc.role})
+    </li>`;
+  }).join('');
+}
+
+=== static\js\player.js ===
+// player.js — статус игрока и инвентарь
+
+async function fetchPlayer() {
+  return await safeFetch('/player', 'Игрок');
+}
+
+async function renderPlayerStatus() {
+  const player = await fetchPlayer();
+  const inventory = await fetchPlayerInventory();
+
+  const els = {
+    name: document.getElementById('player-name'),
+    health: document.getElementById('player-health'),
+    energy: document.getElementById('player-energy'),
+    stress: document.getElementById('player-stress'),
+    social: document.getElementById('player-social'),
+    energy2: document.getElementById('player-energy2'),
+    stress2: document.getElementById('player-stress2'),
+    appearance: document.querySelector('.appearance-placeholder'),
+    inv: document.getElementById('player-inventory')
+  };
+
+  if (!player) {
+    els.name.textContent = 'Нет игрока';
+    els.health.textContent = '--';
+    els.energy.textContent = '--';
+    els.stress.textContent = '--';
+    els.social.textContent = '--';
+    els.energy2.textContent = '--';
+    els.stress2.textContent = '--';
+    els.appearance.textContent = 'Создайте персонажа с ролью "player"';
+    els.inv.innerHTML = '<li>Игрок не найден</li>';
+    return;
+  }
+
+  // Обновляем данные
+  els.name.textContent = `${player.name} ${player.surname || ''}`;
+  els.health.textContent = player.health;
+  els.energy.textContent = player.energy;
+  els.stress.textContent = player.stress;
+  els.social.textContent = player.social;
+  els.energy2.textContent = player.energy;
+  els.stress2.textContent = player.stress;
+
+  // Фильтруем надетые предметы (worn_by_id === player.id)
+  const wornItems = inventory.filter(item => 
+    item.worn_by_id && item.worn_by_id === player.id
+  ).sort((a, b) => (a.layer || 0) - (b.layer || 0));
+
+  if (wornItems.length > 0) {
+    const names = wornItems.map(item => item.name).join(', ');
+    els.appearance.textContent = `Одет: ${names}`;
+  } else {
+    els.appearance.textContent = 'Без одежды';
+  }
+}
+
+=== static\js\search.js ===
+// search.js — поиск сущностей
+
+async function performSearch() {
+  const query = document.getElementById('search-query').value.trim();
+  if (!query) return;
+
+  const resultsDiv = document.getElementById('search-results');
+  resultsDiv.innerHTML = '<p>Поиск...</p>';
+
+  try {
+    let results = [];
+    if (query.startsWith('pers_') || query.startsWith('loc_')) {
+      const res = await fetch(`/${query.startsWith('pers_') ? 'character' : 'location'}/${query}`);
+      if (res.ok) results = [await res.json()];
+    } else {
+      const [chars, locs] = await Promise.all([
+        fetch('/characters').then(r => r.json()),
+        fetch('/locations').then(r => r.json())
+      ]);
+      const q = query.toLowerCase();
+      results = [
+        ...chars.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.surname && c.surname.toLowerCase().includes(q))),
+        ...locs.filter(l => l.name && l.name.toLowerCase().includes(q))
+      ];
+    }
+
+    if (results.length === 0) {
+      resultsDiv.innerHTML = '<p>Ничего не найдено.</p>';
+    } else {
+      resultsDiv.innerHTML = results.map(item => {
+        const id = item.id;
+        const name = item.name || id;
+        const type = id.startsWith('pers_') ? 'Персонаж' : 'Локация';
+        return `<div onclick="openEditModal('${id}')" title="${id}" style="padding:6px;cursor:pointer;border-bottom:1px solid #eee;">
+          [${id}] ${name} (${type})
+        </div>`;
+      }).join('');
+    }
+  } catch (e) {
+    resultsDiv.innerHTML = `<p>Ошибка: ${e.message}</p>`;
+  }
+}
+
+=== static\js\smartphone.js ===
+// smartphone.js — управление смартфоном и приложениями
+
+// Открытие модального окна (приложения)
+function openApp(appName) {
+  const modal = document.getElementById(`modal-${appName}`);
+  if (modal) {
+    modal.style.display = 'block';
+    // Отложенный рендер для инвентаря
+    if (appName === 'inventory') {
+      setTimeout(() => {
+        if (typeof renderInventory === 'function') {
+          renderInventory();
+        }
+      }, 50); // даём время на отображение DOM
+    }
+  }
+}
+
+// Закрытие модального окна
+function closeApp(appName) {
+  const modal = document.getElementById(`modal-${appName}`);
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+// Закрытие по клику вне модального окна
+document.addEventListener('click', (e) => {
+  const modals = document.querySelectorAll('.modal');
+  modals.forEach(modal => {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
+  });
+});
+
+// Закрытие по нажатию Esc
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.style.display = 'none';
+    });
+  }
+});
+
+// Инициализация: скрыть все модальные окна при загрузке
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.modal').forEach(modal => {
+    modal.style.display = 'none';
+  });
+});
+
+=== static\js\world.js ===
+// world.js — управление глобальным состоянием мира
+
+// Загрузка и отображение времени/погоды
+async function renderWorldState() {
+  const world = await safeFetch('/world', 'Мир');
+  if (!world) return;
+
+  try {
+    const dt = new Date(world.current_timestamp);
+    const timeStr = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('game-time').textContent = timeStr;
+    document.getElementById('weather').textContent = `${world.weather}, ${world.temperature}°C`;
+  } catch (e) {
+    console.error('Ошибка формата даты:', e);
+    document.getElementById('game-time').textContent = '--:--';
+    document.getElementById('weather').textContent = 'Ошибка погоды';
+  }
+}
+
+// Обновление мира (вызывается из редактора)
+async function updateWorldState(data) {
+  const res = await fetch('/world', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(JSON.stringify(err));
+  }
+  return await res.json();
+}
+
+// Инициализация
+document.addEventListener('DOMContentLoaded', () => {
+  renderWorldState();
+});
+

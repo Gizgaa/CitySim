@@ -29,7 +29,7 @@
         <p id="location-description">Описание локации загружается...</p>
 		
 		<!-- Кнопки Dev Mode -->
-		<div id="dev-controls" class="dev-controls" style="display:none; margin-top:15px;">
+		<div id="dev-controls" class="dev-controls">
 			<button onclick="editLocationField('name')">✎ Название</button>
 			<button onclick="editLocationField('description')">✎ Описание</button>
 			<button onclick="openConnectionsEditor()">🔗 Переходы</button>
@@ -93,6 +93,11 @@
       <button class="tool-btn" onclick="openCreateModal('character')">➕ Персонаж</button>
       <button class="tool-btn" onclick="openCreateModal('location')">➕ Локация</button>
       <button class="tool-btn" onclick="openCreateModal('item')">➕ Предмет</button>
+	  <button class="tool-btn" onclick="openCreateModal('object')">➕ Объект</button>
+	  <button class="tool-btn" onclick="openCreateModal('item_template')">➕ Шаблон предмета</button>
+	  <button class="tool-btn" onclick="openCreateModal('object_template')">➕ Шаблон объекта</button>
+	  <button class="tool-btn" onclick="openCreateModal('character_template')">➕ Шаблон персонажа</button>
+	  <button class="tool-btn" onclick="openCreateModal('location_template')">➕ Шаблон локации</button>
     </div>
   </div>
 
@@ -151,10 +156,17 @@
     <span class="close" onclick="closeModal('create')">&times;</span>
     <h3 id="create-title">Создать сущность</h3>
     <select id="create-type" onchange="buildCreateForm(this.value)">
-      <option value="character">Персонаж</option>
-      <option value="location">Локация</option>
-      <option value="item">Предмет</option>
-    </select>
+  <!-- Реальные сущности -->
+  <option value="character">➕ Персонаж</option>
+  <option value="location">➕ Локация</option>
+  <option value="item">➕ Предмет</option>
+  <option value="object">➕ Объект</option>
+  <!-- Шаблоны -->
+  <option value="character_template">📄 Шаблон персонажа</option>
+  <option value="location_template">📄 Шаблон локации</option>
+  <option value="item_template">📄 Шаблон предмета</option>
+  <option value="object_template">📄 Шаблон объекта</option>
+</select>
     <form id="create-form-container"></form> <!-- ← ИЗМЕНЕНО: уникальный ID -->
     <button onclick="submitCreateForm()">Создать</button>
   </div>
@@ -186,11 +198,11 @@
   <script src="js/core.js"></script>
   <script src="js/world.js"></script>
   <script src="js/player.js"></script>
+  <script src="js/editor.js"></script>
   <script src="js/location.js"></script>
   <script src="js/npcs.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/smartphone.js"></script>
-  <script src="js/editor.js"></script>
   <script src="js/search.js"></script>
   <script src="js/inventory.js"></script>
 

@@ -142,6 +142,24 @@ class ChatRequest(BaseModel):
 
 class WearRequest(BaseModel):
     wear: bool
+    
+class CharacterTemplateCreate(BaseModel):
+    name: str
+    surname: str
+    patronymic: Optional[str] = None
+    age: int
+    gender: str
+    role: str = "npc"
+    occupation: Optional[str] = None
+    personality: Optional[str] = None
+    current_goal: Optional[str] = None
+
+class ObjectTemplateCreate(BaseModel):
+    name: str
+    object_type: str
+    description: Optional[str] = None
+    is_interactable: bool = True
+    is_container: bool = False
 
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
@@ -174,7 +192,7 @@ def get_location_by_id(loc_id: str) -> LocationResponse:
 # === ЭНДПОИНТЫ ===
 
 @app.post("/character", response_model=CharacterResponse)
-def create_character( CharacterCreate):
+def create_character(data: CharacterCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
     char_id = generate_id("pers")
@@ -398,7 +416,7 @@ def chat(req: ChatRequest):
 # === ИНВЕНТАРЬ И ОДЕЖДА ===
 
 @app.post("/item", response_model=ItemResponse)
-def create_item( ItemCreate):
+def create_item(data: ItemCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
     item_id = generate_id("it")
@@ -426,7 +444,7 @@ def get_item_by_id(item_id: str) -> ItemResponse:
     return ItemResponse(**dict(row))
 
 @app.post("/object", response_model=ObjectResponse)
-def create_object( ObjectCreate):
+def create_object(data: ObjectCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
     obj_id = generate_id("obj")
@@ -543,7 +561,7 @@ def pickup_item(item_id: str):
 # === РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ ===
 
 @app.patch("/character/{char_id}", response_model=CharacterResponse)
-def update_character(char_id: str,  CharacterCreate):
+def update_character(char_id: str,  data: CharacterCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -582,7 +600,7 @@ def delete_character(char_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/location/{loc_id}", response_model=LocationResponse)
-def update_location(loc_id: str,  LocationCreate):
+def update_location(loc_id: str, data: LocationCreate):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -680,6 +698,402 @@ def get_location_items(loc_id: str):
     rows = cursor.fetchall()
     conn.close()
     return [ItemResponse(**dict(row)) for row in rows]
+    
+class ConnectionCreate(BaseModel):
+    from_location_id: str
+    to_location_id: str
+    is_bidirectional: bool = True
+
+@app.post("/location_connection")
+def create_connection(data: ConnectionCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Прямая связь
+        cursor.execute("""
+            INSERT OR REPLACE INTO location_connections 
+            (from_location_id, to_location_id, is_bidirectional)
+            VALUES (?, ?, ?)
+        """, (data.from_location_id, data.to_location_id, data.is_bidirectional))
+        # Обратная связь, если двусторонняя
+        if data.is_bidirectional:
+            cursor.execute("""
+                INSERT OR REPLACE INTO location_connections 
+                (from_location_id, to_location_id, is_bidirectional)
+                VALUES (?, ?, ?)
+            """, (data.to_location_id, data.from_location_id, True))
+        conn.commit()
+        conn.close()
+        return {"status": "created"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/location_connection/{from_id}/{to_id}")
+def delete_connection(from_id: str, to_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM location_connections WHERE from_location_id = ? AND to_location_id = ?", (from_id, to_id))
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+class LocationConnectionCreate(BaseModel):
+    from_location_id: str
+    to_location_id: str
+    connection_type: str = "door"
+    description: Optional[str] = None
+    is_bidirectional: bool = True
+    requires_key_id: Optional[str] = None
+
+@app.post("/location_connection")
+def create_location_connection( LocationConnectionCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO location_connections (
+                from_location_id, to_location_id, connection_type, description,
+                is_bidirectional, requires_key_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            data.from_location_id, data.to_location_id, data.connection_type,
+            data.description, data.is_bidirectional, data.requires_key_id
+        ))
+        conn.commit()
+        conn.close()
+        return {"status": "created"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/location_connection/{from_id}/{to_id}")
+def delete_location_connection(from_id: str, to_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM location_connections WHERE from_location_id = ? AND to_location_id = ?", (from_id, to_id))
+        conn.commit()
+        conn.close()
+        return {"status": "deleted"}
+    except Exception as e:
+        conn.close()
+        logger.error(f"Delete connection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+@app.get("/items", response_model=List[ItemResponse])
+def list_all_items():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM items")
+    rows = cursor.fetchall()
+    conn.close()
+    return [ItemResponse(**dict(row)) for row in rows]
+    
+class ItemTemplateCreate(BaseModel):
+    name: str
+    item_type: str
+    description: Optional[str] = None
+    layer: Optional[int] = 0
+    is_dirty: Optional[bool] = False
+
+@app.post("/item_template", response_model=ItemResponse)
+def create_item_template( ItemTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_it")
+    try:
+        cursor.execute("""
+        INSERT INTO item_templates (
+            id, name, item_type, description, layer, is_dirty
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (tpl_id, data.name, data.item_type, data.description, data.layer, data.is_dirty))
+        conn.commit()
+        conn.close()
+        return get_item_template_by_id(tpl_id)
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create item template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_item_template_by_id(tpl_id: str) -> ItemResponse:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_templates WHERE id = ?", (tpl_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item template not found")
+    # Преобразуем в ItemResponse (без ID, location, holder и т.д.)
+    item_data = dict(row)
+    del item_data['id']
+    del item_data['created_at']
+    return ItemResponse(**item_data)
+
+@app.get("/item_templates", response_model=List[ItemResponse])
+def list_item_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [get_item_template_by_id(row["id"]) for row in rows]
+    
+class LocationTemplateCreate(BaseModel):
+    name: str
+    type: str
+    parent_id: Optional[str] = None
+    address: Optional[str] = None
+    owner_id: Optional[str] = None
+    description: Optional[str] = None
+    open_time: Optional[str] = None
+    close_time: Optional[str] = None
+    is_always_open: bool = False
+    lock_type: int = 1
+
+@app.post("/location_template", response_model=LocationResponse)
+def create_location_template( LocationTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_loc")
+    try:
+        cursor.execute("""
+        INSERT INTO location_templates (
+            id, name, type, parent_id, address, owner_id, description,
+            open_time, close_time, is_always_open, lock_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tpl_id, data.name, data.type, data.parent_id, data.address,
+            data.owner_id, data.description, data.open_time, data.close_time,
+            data.is_always_open, data.lock_type
+        ))
+        conn.commit()
+        conn.close()
+        # Возвращаем как LocationResponse (без ID шаблона)
+        return LocationResponse(
+            id="",  # не возвращаем реальный ID
+            name=data.name,
+            type=data.type,
+            parent_id=data.parent_id,
+            address=data.address,
+            owner_id=data.owner_id,
+            description=data.description,
+            open_time=data.open_time,
+            close_time=data.close_time,
+            is_always_open=data.is_always_open,
+            is_locked=False,
+            lock_type=data.lock_type,
+            capacity=100,
+            light_level=1.0,
+            temperature=22.0,
+            cleanliness=1.0
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create location template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/location_templates", response_model=List[LocationResponse])
+def list_location_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        LocationResponse(
+            id="", name=r["name"], type=r["type"], parent_id=r["parent_id"],
+            address=r["address"], owner_id=r["owner_id"], description=r["description"],
+            open_time=r["open_time"], close_time=r["close_time"],
+            is_always_open=bool(r["is_always_open"]), is_locked=False,
+            lock_type=r["lock_type"], capacity=100, light_level=1.0,
+            temperature=22.0, cleanliness=1.0
+        )
+        for r in rows
+    ]
+    
+@app.get("/objects", response_model=List[ObjectResponse])
+def list_all_objects():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM location_objects")
+    rows = cursor.fetchall()
+    conn.close()
+    return [ObjectResponse(**dict(row)) for row in rows]
+    
+# === ШАБЛОНЫ ===
+
+class ItemTemplateCreate(BaseModel):
+    name: str
+    item_type: str
+    description: Optional[str] = None
+    layer: Optional[int] = 0
+    is_dirty: Optional[bool] = False
+
+@app.post("/item_template", response_model=ItemResponse)
+def create_item_template( ItemTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_it")
+    try:
+        cursor.execute("""
+        INSERT INTO item_templates (
+            id, name, item_type, description, layer, is_dirty
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (tpl_id, data.name, data.item_type, data.description, data.layer, data.is_dirty))
+        conn.commit()
+        conn.close()
+        return ItemResponse(
+            id="", name=data.name, item_type=data.item_type,
+            description=data.description, layer=data.layer, is_dirty=data.is_dirty,
+            current_location_id=None, current_object_id=None,
+            current_holder_id=None, worn_by_id=None
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create item template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/item_templates", response_model=List[ItemResponse])
+def list_item_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        ItemResponse(
+            id="", name=r["name"], item_type=r["item_type"],
+            description=r["description"], layer=r["layer"], is_dirty=bool(r["is_dirty"]),
+            current_location_id=None, current_object_id=None,
+            current_holder_id=None, worn_by_id=None
+        )
+        for r in rows
+    ]
+    
+@app.post("/character_template", response_model=CharacterResponse)
+def create_character_template(data: CharacterTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_pers")
+    try:
+        cursor.execute("""
+        INSERT INTO character_templates (
+            id, name, surname, patronymic, age, gender, role,
+            occupation, personality, current_goal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tpl_id, data.name, data.surname, data.patronymic, data.age,
+            data.gender, data.role, data.occupation,
+            data.personality, data.current_goal
+        ))
+        conn.commit()
+        conn.close()
+        # Возвращаем как CharacterResponse без location_id и ID
+        return CharacterResponse(
+            id="",
+            name=data.name,
+            surname=data.surname,
+            patronymic=data.patronymic,
+            age=data.age,
+            gender=data.gender,
+            role=data.role,
+            location_id="",  # ← шаблон не имеет локации
+            occupation=data.occupation,
+            personality=data.personality,
+            current_goal=data.current_goal,
+            health=100,
+            energy=100,
+            stress=0,
+            social=50
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create character template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/character_templates", response_model=List[CharacterResponse])
+def list_character_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM character_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        CharacterResponse(
+            id="",
+            name=r["name"],
+            surname=r["surname"],
+            patronymic=r["patronymic"],
+            age=r["age"],
+            gender=r["gender"],
+            role=r["role"],
+            location_id="",  # ← нет локации у шаблона
+            occupation=r["occupation"],
+            personality=r["personality"],
+            current_goal=r["current_goal"],
+            health=100,
+            energy=100,
+            stress=0,
+            social=50
+        )
+        for r in rows
+    ]
+    
+@app.post("/object_template", response_model=ObjectResponse)
+def create_object_template(data: ObjectTemplateCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    tpl_id = generate_id("tpl_obj")
+    try:
+        cursor.execute("""
+        INSERT INTO object_templates (
+            id, name, object_type, description, is_interactable, is_container
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            tpl_id, data.name, data.object_type, data.description,
+            data.is_interactable, data.is_container
+        ))
+        conn.commit()
+        conn.close()
+        return ObjectResponse(
+            id="",
+            name=data.name,
+            object_type=data.object_type,
+            description=data.description,
+            is_interactable=data.is_interactable,
+            is_container=data.is_container
+        )
+    except Exception as e:
+        conn.close()
+        logger.error(f"Create object template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/object_templates", response_model=List[ObjectResponse])
+def list_object_templates():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM object_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        ObjectResponse(
+            id="",
+            name=r["name"],
+            object_type=r["object_type"],
+            description=r["description"],
+            is_interactable=bool(r["is_interactable"]),
+            is_container=bool(r["is_container"])
+        )
+        for r in rows
+    ]
 
 @app.get("/")
 def root():
